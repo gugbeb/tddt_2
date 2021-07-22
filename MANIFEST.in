@@ -1,0 +1,6 @@
+include *.rst
+include LICENSE
+include *.ini
+global-exclude *.pyc
+recursive-include tests *.py *.ini *.rst *_diff
+recursive-include tddt *.py
