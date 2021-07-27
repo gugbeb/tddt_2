@@ -11,6 +11,52 @@ class Branch(Enum):
     FORWARD = 0
     BACKWARD = 1
 
+class ContourPoint:
+    """Point on the Keldysh contour, combination of a branch and a real time point"""
+
+    def __init__(self, branch, t):
+        self.branch = branch
+        self.t = t
+
+    def __lt__(self, other):
+        """
+        This function defines the comparison rule used by `contour_ordering2()`
+        and `contour_ordering3()`.
+        """
+        if self.branch == other.branch:
+            if self.branch == Branch.FORWARD:
+                return self.t.linear_index < other.t.linear_index
+            else:
+                return self.t.linear_index >= other.t.linear_index
+        else:
+            return self.branch.value < other.branch.value
+
+def contour_ordering2(*points):
+    """
+    Contour ordering of two points
+
+    Takes two contour points and returns a permutation of integers [0, 1]
+    describing the order of the points on the contour. A pair of coinciding
+    points on the forward branch comes in the original order in the output
+    permutation, while for the backward branch the order is reversed.
+    """
+    order = [0, 1]
+    order.sort(key = lambda n: points[n], reverse = True)
+    return order
+
+def contour_ordering3(*points):
+    """
+    Contour ordering of three points
+
+    Takes three contour points and returns a permutation of integers [0, 1, 2]
+    describing the order of the points on the contour. A pair of coinciding
+    points on the forward branch comes in the original order in the output
+    permutation, while for the backward branch the order is reversed.
+    """
+    order = [0, 1, 2]
+    order.sort(key = lambda n: points[n], reverse = True)
+    return order
+
 class KeldyshGF:
     """Single-particle Green's function on the Keldysh contour"""
 
