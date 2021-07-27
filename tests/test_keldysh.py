@@ -5,6 +5,8 @@ from triqs.gf import MeshReTime, GfReTime, MeshProduct
 
 from tddt.keldysh import *
 
+CP = ContourPoint
+
 class test_keldysh(unittest.TestCase):
     """Keldysh Green's functions and vertices"""
 
@@ -17,7 +19,6 @@ class test_keldysh(unittest.TestCase):
         cls.t_points = list(cls.t_mesh)
 
     def test_contour_ordering2(self):
-        CP = ContourPoint
         FW, BW = Branch.FORWARD, Branch.BACKWARD
         t1 = self.t_points[2]
         t2 = self.t_points[3]
@@ -41,7 +42,6 @@ class test_keldysh(unittest.TestCase):
         self.assertEqual(order(CP(FW, t2), CP(BW, t1)), [1, 0])
 
     def test_contour_ordering3(self):
-        CP = ContourPoint
         FW, BW = Branch.FORWARD, Branch.BACKWARD
         t1 = self.t_points[2]
         t2 = self.t_points[3]
@@ -186,8 +186,8 @@ class test_keldysh(unittest.TestCase):
         FW, BW = Branch.FORWARD, Branch.BACKWARD
         t = next(iter(self.t_mesh))
 
-        g[BW, FW, t, t] = 3.0
-        self.assertEqual(g[BW, FW, t, t], 3.0)
+        g[CP(BW, t), CP(FW, t)] = 3.0
+        self.assertEqual(g[CP(BW, t), CP(FW, t)], 3.0)
 
 
         g[BW, FW] = 2 * np.ones((self.n_t, self.n_t))
@@ -195,17 +195,17 @@ class test_keldysh(unittest.TestCase):
 
         # Multiplication by a scalar
         g *= 3
-        self.assertEqual(g[BW, FW, t, t], 6.0)
+        self.assertEqual(g[CP(BW, t), CP(FW, t)], 6.0)
 
         # Addition
         g += g
-        self.assertEqual(g[BW, FW, t, t], 12.0)
-        self.assertEqual((g + g)[BW, FW, t, t], 24.0)
+        self.assertEqual(g[CP(BW, t), CP(FW, t)], 12.0)
+        self.assertEqual((g + g)[CP(BW, t), CP(FW, t)], 24.0)
 
         # Subtraction
         g -= 0.5 * g
-        self.assertEqual(g[BW, FW, t, t], 6.0)
-        self.assertEqual((g - g)[BW, FW, t, t], 0.0)
+        self.assertEqual(g[CP(BW, t), CP(FW, t)], 6.0)
+        self.assertEqual((g - g)[CP(BW, t), CP(FW, t)], 0.0)
 
         # Unary minus
-        self.assertEqual((-g)[BW, FW, t, t], -6.0)
+        self.assertEqual((-g)[CP(BW, t), CP(FW, t)], -6.0)

@@ -72,36 +72,45 @@ class KeldyshGF:
         # Fill Keldysh components
         #
 
+        ordered = lambda z0, z1: contour_ordering2(z0, z1) == [0, 1]
+
         # Aoki RMP, Eqs. (17)
         self[Branch.BACKWARD, Branch.FORWARD] = g_g.data[:]
         self[Branch.FORWARD, Branch.BACKWARD] = g_l.data[:]
         # Aoki RMP, Eqs. (15)
-        for t1, t2 in self.time_mesh:
-            i1, i2 = t1.linear_index, t2.linear_index
-            self[Branch.FORWARD, Branch.FORWARD, t1, t2] = \
-                g_g[t1, t2] if (i1 >= i2) else g_l[t1, t2]
-            self[Branch.BACKWARD, Branch.BACKWARD, t1, t2] = \
-                g_l[t1, t2] if (i1 >= i2) else g_g[t1, t2]
+        for t0, t1 in self.time_mesh:
+            z0 = ContourPoint(Branch.FORWARD, t0)
+            z1 = ContourPoint(Branch.FORWARD, t1)
+            self[z0, z1] = g_g[t0, t1] if ordered(z0, z1) else g_l[t0, t1]
+            z0 = ContourPoint(Branch.BACKWARD, t0)
+            z1 = ContourPoint(Branch.BACKWARD, t1)
+            self[z0, z1] = g_g[t0, t1] if ordered(z0, z1) else g_l[t0, t1]
 
     def __getitem__(self, index):
-        if len(index) == 2: # Specify the Keldysh indices
+        # Access one Keldysh block
+        if isinstance(index[0], Branch) and isinstance(index[1], Branch):
             return self.data[index[0].value, index[1].value, :, :]
-        elif len(index) == 4: # Keldysh indices + real time points
-            return self.data[index[0].value,
-                             index[1].value,
-                             index[2].linear_index,
-                             index[3].linear_index]
+        # Access a single element
+        elif isinstance(index[0], ContourPoint) and \
+             isinstance(index[1], ContourPoint):
+            return self.data[index[0].branch.value,
+                             index[1].branch.value,
+                             index[0].t.linear_index,
+                             index[1].t.linear_index]
         else:
             raise IndexError("Unrecognized index format")
 
     def __setitem__(self, index, value):
-        if len(index) == 2: # Specify the Keldysh indices
+        # Access one Keldysh block
+        if isinstance(index[0], Branch) and isinstance(index[1], Branch):
             self.data[index[0].value, index[1].value, :, :] = value
-        elif len(index) == 4: # Keldysh indices + real time points
-            self.data[index[0].value,
-                      index[1].value,
-                      index[2].linear_index,
-                      index[3].linear_index] = value
+        # Access a single element
+        elif isinstance(index[0], ContourPoint) and \
+             isinstance(index[1], ContourPoint):
+            self.data[index[0].branch.value,
+                      index[1].branch.value,
+                      index[0].t.linear_index,
+                      index[1].t.linear_index] = value
         else:
             raise IndexError("Unrecognized index format")
 
