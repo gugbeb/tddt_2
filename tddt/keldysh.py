@@ -6,7 +6,7 @@ from enum import Enum
 from copy import deepcopy
 from itertools import product
 from typing import Tuple, Union
-import numpy as np
+from numpy import zeros
 from triqs.gf import Gf
 
 class Branch(Enum):
@@ -64,8 +64,8 @@ class KeldyshGF:
         self.time_mesh = g_l.mesh
 
         # 2 Keldysh indices, 2 real time indices
-        self.data = np.zeros((2, 2, *self.time_mesh.size_of_components()),
-                             dtype = complex)
+        self.data = zeros((2, 2, *self.time_mesh.size_of_components()),
+                          dtype = complex)
 
         #
         # Fill Keldysh components
@@ -177,8 +177,8 @@ class KeldyshVertex3:
         assert all(p.mesh == self.time_mesh for p in G.values())
 
         # 3 Keldysh indices, 3 real time indices
-        self.data = np.zeros((2, 2, 2, *self.time_mesh.size_of_components()),
-                             dtype = complex)
+        self.data = zeros((2, 2, 2, *self.time_mesh.size_of_components()),
+                          dtype = complex)
 
         #
         # Fill Keldysh components
