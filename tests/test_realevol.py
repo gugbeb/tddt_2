@@ -13,7 +13,8 @@ from realevol.init_state import *
 from tddt.keldysh import KeldyshGF
 from tddt.realevol import (
     compute_keldysh_gf,
-    compute_keldysh_gf_element
+    compute_keldysh_gf_element,
+    compute_keldysh_vertex3
 )
 
 class test_realevol(unittest.TestCase):
@@ -75,6 +76,15 @@ class test_realevol(unittest.TestCase):
                                            self.t_mesh,
                                            self.params)
         assert_array_almost_equal(gf[('dn', 0, 1)].data, gf_el.data)
+
+    def test_compute_keldysh_vertex3(self):
+        Lambda = compute_keldysh_vertex3(('up', 0),
+                                         ('up', 0),
+                                         n('dn', 1) + n('up', 1),
+                                         self.init_state,
+                                         self.h,
+                                         self.t_mesh,
+                                         self.params)
 
 if __name__ == '__main__':
     unittest.main()

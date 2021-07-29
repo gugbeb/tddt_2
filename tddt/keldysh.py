@@ -162,11 +162,11 @@ class KeldyshVertex3:
         Each element of dictionary G corresponds to one permutation of operators
         in the correlator,
         $$
-        G_{ijk}(t_1, t_2, t_3) = -\xi_{ijk} <O_i(t_i) O_j(t_j) O_k(t_k)>,
+        G_{ijk}(t_0, t_1, t_2) = -\xi_{ijk} <O_i(t_i) O_j(t_j) O_k(t_k)>,
         $$
-        where $O_1(t_1) = c(t_1)$, $O_2(t_2) = c^\dagger(t_2)$,
-        $O_3(t_3) = \rho(t_3)$. $\xi_{ijk} = -1$ if permutation (ijk) swaps
-        indices 1 and 2, and +1 otherwise.
+        where $O_0(t_0) = c(t_0)$, $O_1(t_1) = c^\dagger(t_1)$,
+        $O_2(t_2) = \rho(t_2)$. $\xi_{ijk} = -1$ if permutation (ijk) swaps
+        indices 0 and 1, and +1 otherwise.
 
         Keys are 3! = 6 triplets (i, j, k), which are permutations of (0, 1, 2)
         indicating the respective order of $c$, $c^\dagger$ and $\rho$.

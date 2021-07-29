@@ -1,4 +1,4 @@
-from itertools import product
+from itertools import product, permutations
 import numpy as np
 
 # Inexplicably, the batch versions of `compute_*()` segfault in the cpp2py
@@ -6,6 +6,7 @@ import numpy as np
 # This can be an obscure memory corruption bug.
 import scipy
 
+from triqs.gf import Gf
 import triqs.utility.mpi
 from realevol import operators_texpr
 from realevol import operators_tinterp
@@ -17,7 +18,7 @@ from realevol.realevol import (
     compute_correlator_3t
 )
 
-from .keldysh import KeldyshGF
+from .keldysh import KeldyshGF, KeldyshVertex3
 
 def _select_op_module(op):
     if isinstance(op, operators_texpr.Operator):
@@ -37,11 +38,16 @@ def compute_keldysh_gf(gf_struct, init_state, h, t_mesh, params):
             gf[(bl, i, j)] = KeldyshGF(g_l[bl][i, j], g_g[bl][i, j])
     return gf
 
-def compute_keldysh_gf_element(i, j, init_state, h, t_mesh, params):
+def compute_keldysh_gf_element(c_indices,
+                               c_dag_indices,
+                               init_state,
+                               h,
+                               t_mesh,
+                               params):
     """Use realevol to compute a single matrix element of a Keldysh Green's function"""
     op_module = _select_op_module(h)
-    c_op = op_module.c(*i)
-    c_dag_op = op_module.c_dag(*j)
+    c_op = op_module.c(*c_indices)
+    c_dag_op = op_module.c_dag(*c_dag_indices)
     g_g, g_l = compute_correlator_2t([(c_op, c_dag_op), (c_dag_op, c_op)],
                                      init_state,
                                      h,
@@ -51,3 +57,65 @@ def compute_keldysh_gf_element(i, j, init_state, h, t_mesh, params):
     g_g.data[:] *= -1j
     g_l.data[:] = 1j * np.transpose(g_l.data)
     return KeldyshGF(g_l, g_g)
+
+def compute_keldysh_vertex3(c_indices,
+                            c_dag_indices,
+                            n_op,
+                            init_state,
+                            h,
+                            t_mesh,
+                            params):
+    """Use realevol to compute a three-point vertex function"""
+
+    op_module = _select_op_module(n_op)
+    assert op_module.operator_stat(n_op) == "Boson"
+
+    verb = params.get('verbosity', 0) > 0
+
+    if verb:
+        print("Computing time-dependent expectation value of", n_op)
+    n_op_aver = compute_expectval(n_op, init_state, h, t_mesh, params)
+
+    ops = (op_module.c(*c_indices), op_module.c_dag(*c_dag_indices), n_op)
+
+    if verb: print(f"Computing correlator <{ops[0]},{ops[1]}>")
+    c_c_dag_aver = compute_correlator_2t(ops[0],
+                                         ops[1],
+                                         init_state,
+                                         h,
+                                         t_mesh,
+                                         params)
+    if verb: print(f"Computing correlator <{ops[1]},{ops[0]}>")
+    c_dag_c_aver = compute_correlator_2t(ops[1],
+                                         ops[0],
+                                         init_state,
+                                         h,
+                                         t_mesh,
+                                         params)
+
+    # Compute time pieces
+    perms = list(permutations((0,1,2)))
+    ops_perms = [(ops[p[0]], ops[p[1]], ops[p[2]]) for p in perms]
+
+    if verb: print(f"Computing correlators of {ops_perms}")
+    G_list = compute_correlator_3t(ops_perms, init_state, h, t_mesh, params)
+
+    G = {}
+    for p, G_p in zip(perms, G_list):
+        # Are $c$ and $c^\dagger$ swapped by this permutation
+        c_c_dag_swapped = p.index(1) < p.index(0)
+
+        G[p] = Gf(mesh = G_p.mesh, target_shape = [])
+        G_out = G[p]
+
+        # Permute time arguments and subtract the disconnected part
+        for t in G_out.mesh:
+            t1, t2, t3 = t
+            t_p1, t_p2, t_p3 = t[p[0]], t[p[1]], t[p[2]]
+            G_out[t1, t2, t3] = G_p[t_p1, t_p2, t_p3]       \
+                - n_op_aver[t3] * (c_dag_c_aver[t2, t1]     \
+                                   if c_c_dag_swapped else  \
+                                   c_c_dag_aver[t1, t2])
+            G_out *= -1 * (-1 if c_c_dag_swapped else 1)
+
+    return KeldyshVertex3(G)
