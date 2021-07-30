@@ -6,7 +6,7 @@ from enum import Enum
 from copy import deepcopy
 from itertools import product
 from typing import Tuple, Union
-from numpy import zeros
+from numpy import zeros, ones
 from triqs.gf import Gf
 
 class Branch(Enum):
@@ -62,6 +62,7 @@ class KeldyshGF:
     def __init__(self, g_l, g_g):
         assert g_l.mesh == g_g.mesh
         self.time_mesh = g_l.mesh
+        assert len(g_l.mesh) % 2 == 1
 
         # 2 Keldysh indices, 2 real time indices
         self.data = zeros((2, 2, *self.time_mesh.size_of_components()),
@@ -152,6 +153,23 @@ class KeldyshGF:
     def __neg__(self):
         res = deepcopy(self)
         res.data *= -1
+        return res
+
+    def __matmul__(self, other):
+        """Contour convolution"""
+        assert self.time_mesh == other.time_mesh
+        # Weights for Simpson’s rule
+        w = ones(len(self.time_mesh[0]))
+        w[1:-1:2] = 4
+        w[2:-1:2] = 2
+        w *= self.time_mesh[0].delta / 3
+        res = deepcopy(self)
+        for b0, b1 in product(Branch, Branch):
+            res.data[b0.value, b1.value, :, :] = \
+                (self.data[b0.value, Branch.FORWARD.value, :, :] * w) @ \
+                 other.data[Branch.FORWARD.value, b1.value, :, :] - \
+                (self.data[b0.value, Branch.BACKWARD.value, :, :] * w) @ \
+                 other.data[Branch.BACKWARD.value, b1.value, :, :]
         return res
 
 class KeldyshVertex3:

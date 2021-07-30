@@ -1,6 +1,7 @@
 import unittest
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 from itertools import product
+import numpy as np
 
 from triqs.gf import MeshReTime, GfReTime, MeshProduct
 
@@ -13,8 +14,8 @@ class test_keldysh(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.t_max = 5.0
-        cls.n_t = 6
+        cls.t_max = 6.0
+        cls.n_t = 7
         cls.t_mesh = MeshReTime(0, cls.t_max, cls.n_t)
         cls.tt_mesh = MeshProduct(cls.t_mesh, cls.t_mesh)
         cls.ttt_mesh = MeshProduct(cls.t_mesh, cls.t_mesh, cls.t_mesh)
@@ -211,6 +212,11 @@ class test_keldysh(unittest.TestCase):
 
         # Unary minus
         self.assertEqual((-g)[CP(BW, t), CP(FW, t)], -6.0)
+
+        # Convolution
+        conv = g @ (2 * g)
+        self.assertEqual(conv.time_mesh, g.time_mesh)
+        self.assertEqual(conv.data.shape, g.data.shape)
 
     def test_keldysh_vertex3(self):
 
