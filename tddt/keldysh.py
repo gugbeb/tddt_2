@@ -5,7 +5,7 @@
 from enum import Enum
 from copy import deepcopy
 from itertools import product
-from typing import Tuple, Union
+from typing import Tuple, Union, Dict
 from numpy import zeros, ones
 from triqs.gf import Gf
 
@@ -175,7 +175,7 @@ class KeldyshGF:
 class KeldyshVertex3:
     """Three-point vertex function <c c^+ \\rho> on the Keldysh contour"""
 
-    def __init__(self, G: dict[Tuple[int,int,int], Gf]):
+    def __init__(self, G: Dict[Tuple[int,int,int], Gf]):
         r"""
         Each element of dictionary G corresponds to one permutation of operators
         in the correlator,
