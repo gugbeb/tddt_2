@@ -24,7 +24,7 @@ class test_realevol(unittest.TestCase):
     def setUpClass(cls):
         cls.spin_names = ('up', 'dn')
         cls.t_max = 5.0
-        cls.n_t = 6
+        cls.n_t = 7
         cls.t_mesh = MeshReTime(0, cls.t_max, cls.n_t)
 
         m_interp = MeshReTime(0, cls.t_max, 1001)

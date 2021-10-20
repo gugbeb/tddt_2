@@ -62,7 +62,10 @@ class KeldyshGF:
     def __init__(self, g_l, g_g):
         assert g_l.mesh == g_g.mesh
         self.time_mesh = g_l.mesh
-        assert len(g_l.mesh) % 2 == 1
+
+        # The following precondition is relied upon by __matmul__()
+        assert len(g_l.mesh) % 2 == 1, \
+               "Time grid must have an odd number of nodes"
 
         # 2 Keldysh indices, 2 real time indices
         self.data = zeros((2, 2, *self.time_mesh.size_of_components()),
