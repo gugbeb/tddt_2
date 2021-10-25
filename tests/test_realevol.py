@@ -75,7 +75,10 @@ class test_realevol(unittest.TestCase):
                                            self.h,
                                            self.t_mesh,
                                            self.params)
-        assert_array_almost_equal(gf[('dn', 0, 1)].data, gf_el.data)
+        for g, g_el in zip(gf[('dn', 0, 1)].data, gf_el.data):
+            assert_array_almost_equal(g.mesh, g_el.mesh)
+            assert_array_almost_equal(g.target_shape, g_el.target_shape)
+            assert_array_almost_equal(g.data, g_el.data)
 
     def test_compute_keldysh_vertex3(self):
         Lambda = compute_keldysh_vertex3(('up', 0),

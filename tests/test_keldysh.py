@@ -169,7 +169,9 @@ class test_keldysh(unittest.TestCase):
         g_l = GfReTime(mesh = self.tt_mesh, target_shape = ())
         g_g = GfReTime(mesh = self.tt_mesh, target_shape = ())
         g = KeldyshGF(g_l, g_g)
-        self.assertEqual(g.data.shape, (2, 2, self.n_t, self.n_t))
+        self.assertEqual(len(g.data), 4)
+        for i in range(4):
+            self.assertEqual(g.data[i].data.shape, (self.n_t, self.n_t))
 
         # Construct from matrix-valued lesser and greater GF
         g_l = GfReTime(mesh = self.tt_mesh, target_shape = (2, 2))
@@ -177,7 +179,9 @@ class test_keldysh(unittest.TestCase):
         g_l.data[:] = 2.0
         g_g.data[:] = 3.0
         g = KeldyshGF(g_l[0, 1], g_g[1, 0])
-        self.assertEqual(g.data.shape, (2, 2, self.n_t, self.n_t))
+        self.assertEqual(len(g.data), 4)
+        for i in range(4):
+            self.assertEqual(g.data[i].data.shape, (self.n_t, self.n_t))
 
         # Check Aoki RMP Eq. (16)
         g11 = g[Branch.FORWARD, Branch.FORWARD]
@@ -193,8 +197,8 @@ class test_keldysh(unittest.TestCase):
         self.assertEqual(g[CP(BW, t), CP(FW, t)], 3.0)
 
 
-        g[BW, FW] = 2 * np.ones((self.n_t, self.n_t))
-        assert_array_equal(g[BW, FW], 2*np.ones((self.n_t, self.n_t)))
+        g[BW, FW].data[:] = 2 * np.ones((self.n_t, self.n_t))
+        assert_array_equal(g[BW, FW].data, 2*np.ones((self.n_t, self.n_t)))
 
         # Multiplication by a scalar
         g *= 3
@@ -216,7 +220,7 @@ class test_keldysh(unittest.TestCase):
         # Convolution
         conv = g @ (2 * g)
         self.assertEqual(conv.time_mesh, g.time_mesh)
-        self.assertEqual(conv.data.shape, g.data.shape)
+        self.assertEqual(conv.target_shape, g.target_shape)
 
     def test_keldysh_vertex3(self):
 
@@ -244,8 +248,8 @@ class test_keldysh(unittest.TestCase):
         self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 3.0)
 
         ones_time_mat = np.ones((self.n_t, self.n_t, self.n_t))
-        Lambda[BW, FW, BW] = 2 * ones_time_mat
-        assert_array_equal(Lambda[BW, FW, BW], 2 * ones_time_mat)
+        Lambda[BW, FW, BW].data[:] = 2 * ones_time_mat
+        assert_array_equal(Lambda[BW, FW, BW].data, 2 * ones_time_mat)
 
         # Multiplication by a scalar
         Lambda *= 3

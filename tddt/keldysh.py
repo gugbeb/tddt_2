@@ -61,15 +61,20 @@ class KeldyshGF:
 
     def __init__(self, g_l, g_g):
         assert g_l.mesh == g_g.mesh
+        assert g_l.target_shape == g_g.target_shape
         self.time_mesh = g_l.mesh
+        self.target_shape = g_l.target_shape
 
         # The following precondition is relied upon by __matmul__()
         assert len(g_l.mesh) % 2 == 1, \
                "Time grid must have an odd number of nodes"
 
-        # 2 Keldysh indices, 2 real time indices
-        self.data = zeros((2, 2, *self.time_mesh.size_of_components()),
-                          dtype = complex)
+        # 4 Keldysh components as real time GFs
+        self.data = []
+        for _ in range(4):
+            self.data.append(
+                Gf(mesh=self.time_mesh, target_shape=self.target_shape)
+            )
 
         #
         # Fill Keldysh components
@@ -78,8 +83,8 @@ class KeldyshGF:
         ordered = lambda z0, z1: contour_ordering2(z0, z1) == (0, 1)
 
         # Aoki RMP, Eqs. (17)
-        self[Branch.BACKWARD, Branch.FORWARD] = g_g.data[:]
-        self[Branch.FORWARD, Branch.BACKWARD] = g_l.data[:]
+        self[Branch.BACKWARD, Branch.FORWARD] = g_g
+        self[Branch.FORWARD, Branch.BACKWARD] = g_l
         # Aoki RMP, Eqs. (15)
         for t0, t1 in self.time_mesh:
             z0 = ContourPoint(Branch.FORWARD, t0)
@@ -89,29 +94,30 @@ class KeldyshGF:
             z1 = ContourPoint(Branch.BACKWARD, t1)
             self[z0, z1] = g_g[t0, t1] if ordered(z0, z1) else g_l[t0, t1]
 
+    def _ravel_branch_indices(self, b1, b2):
+        return 2 * b1.value + b2.value
+
     def __getitem__(self, points):
         # Access one Keldysh block
         if all(isinstance(p, Branch) for p in points):
-            return self.data[points[0].value, points[1].value, ...]
+            return self.data[self._ravel_branch_indices(*points)]
         # Access a single element
         elif all(isinstance(p, ContourPoint) for p in points):
-            return self.data[points[0].branch.value,
-                             points[1].branch.value,
-                             points[0].t.linear_index,
-                             points[1].t.linear_index]
+            return self.data[
+                self._ravel_branch_indices(points[0].branch, points[1].branch)][
+                points[0].t, points[1].t]
         else:
             raise IndexError("Unrecognized index format")
 
     def __setitem__(self, points, value):
         # Access one Keldysh block
         if all(isinstance(p, Branch) for p in points):
-            self.data[points[0].value, points[1].value, ...] = value
+            self.data[self._ravel_branch_indices(*points)] = value
         # Access a single element
         elif all(isinstance(p, ContourPoint) for p in points):
-            self.data[points[0].branch.value,
-                      points[1].branch.value,
-                      points[0].t.linear_index,
-                      points[1].t.linear_index] = value
+            self.data[self._ravel_branch_indices(points[0].branch,
+                                                 points[1].branch)][
+                      points[0].t, points[1].t] = value
         else:
             raise IndexError("Unrecognized index format")
 
@@ -121,16 +127,18 @@ class KeldyshGF:
 
     def __iadd__(self, other):
         assert self.time_mesh == other.time_mesh
-        self.data[:] += other.data[:]
+        assert self.target_shape == other.target_shape
+        for sd, od in zip(self.data, other.data): sd += od
         return self
 
     def __isub__(self, other):
         assert self.time_mesh == other.time_mesh
-        self.data[:] -= other.data[:]
+        assert self.target_shape == other.target_shape
+        for sd, od in zip(self.data, other.data): sd -= od
         return self
 
     def __imul__(self, x):
-        self.data[:] *= x
+        for sd in self.data: sd *= x
         return self
 
     def __add__(self, other):
@@ -150,29 +158,32 @@ class KeldyshGF:
 
     def __rmul__(self, x):
         res = deepcopy(self)
-        res.data[:] = x * res.data[:]
+        res *= x
         return res
 
     def __neg__(self):
         res = deepcopy(self)
-        res.data *= -1
+        res *= -1
         return res
 
     def __matmul__(self, other):
         """Contour convolution"""
         assert self.time_mesh == other.time_mesh
+        assert self.target_shape == other.target_shape
         # Weights for Simpson’s rule
         w = ones(len(self.time_mesh[0]))
         w[1:-1:2] = 4
         w[2:-1:2] = 2
         w *= self.time_mesh[0].delta / 3
         res = deepcopy(self)
+        # TODO: For now, we assume that all real-time GFs are scalar-valued
+        # and self.data.ndim == 2.
         for b0, b1 in product(Branch, Branch):
-            res.data[b0.value, b1.value, :, :] = \
-                (self.data[b0.value, Branch.FORWARD.value, :, :] * w) @ \
-                 other.data[Branch.FORWARD.value, b1.value, :, :] - \
-                (self.data[b0.value, Branch.BACKWARD.value, :, :] * w) @ \
-                 other.data[Branch.BACKWARD.value, b1.value, :, :]
+            res[b0, b1].data[:] = \
+                (self[b0, Branch.FORWARD].data * w) @ \
+                 other[Branch.FORWARD, b1].data - \
+                (self[b0, Branch.BACKWARD].data * w) @ \
+                 other[Branch.BACKWARD, b1].data
         return res
 
 class KeldyshVertex3:
@@ -195,11 +206,16 @@ class KeldyshVertex3:
 
         assert len(G) == 6
         self.time_mesh = next(iter(G.values())).mesh
+        self.target_shape = next(iter(G.values())).target_shape
         assert all(p.mesh == self.time_mesh for p in G.values())
+        assert all(p.target_shape == self.target_shape for p in G.values())
 
-        # 3 Keldysh indices, 3 real time indices
-        self.data = zeros((2, 2, 2, *self.time_mesh.size_of_components()),
-                          dtype = complex)
+        # 8 Keldysh components as real time GFs
+        self.data = []
+        for _ in range(8):
+            self.data.append(
+                Gf(mesh=self.time_mesh, target_shape=self.target_shape)
+            )
 
         #
         # Fill Keldysh components
@@ -213,39 +229,34 @@ class KeldyshVertex3:
                 order = contour_ordering3(z0, z1, z2)
                 self[z0, z1, z2] = G[order][t0, t1, t2]
 
+    def _ravel_branch_indices(self, b1, b2, b3):
+        return 4 * b1.value + 2 * b2.value + b3.value
+
     def __getitem__(self, points):
         # Access one Keldysh block
         if all(isinstance(p, Branch) for p in points):
-            return self.data[points[0].value,
-                             points[1].value,
-                             points[2].value,
-                             ...]
+            return self.data[self._ravel_branch_indices(*points)]
         # Access a single element
         elif all(isinstance(p, ContourPoint) for p in points):
-            return self.data[points[0].branch.value,
-                             points[1].branch.value,
-                             points[2].branch.value,
-                             points[0].t.linear_index,
-                             points[1].t.linear_index,
-                             points[2].t.linear_index]
+            return self.data[self._ravel_branch_indices(points[0].branch,
+                                                        points[1].branch,
+                                                        points[2].branch)][
+                             points[0].t,
+                             points[1].t,
+                             points[2].t]
         else:
             raise IndexError("Unrecognized index format")
 
     def __setitem__(self, points, value):
         # Access one Keldysh block
         if all(isinstance(p, Branch) for p in points):
-            self.data[points[0].value,
-                      points[1].value,
-                      points[2].value,
-                      ...] = value
+            self.data[self._ravel_branch_indices(*points)] = value
         # Access a single element
         elif all(isinstance(p, ContourPoint) for p in points):
-            self.data[points[0].branch.value,
-                      points[1].branch.value,
-                      points[2].branch.value,
-                      points[0].t.linear_index,
-                      points[1].t.linear_index,
-                      points[2].t.linear_index] = value
+            self.data[self._ravel_branch_indices(points[0].branch,
+                                                 points[1].branch,
+                                                 points[2].branch)][
+                      points[0].t, points[1].t, points[2].t] = value
         else:
             raise IndexError("Unrecognized index format")
 
@@ -255,16 +266,18 @@ class KeldyshVertex3:
 
     def __iadd__(self, other):
         assert self.time_mesh == other.time_mesh
-        self.data[:] += other.data[:]
+        assert self.target_shape == other.target_shape
+        for sd, od in zip(self.data, other.data): sd += od
         return self
 
     def __isub__(self, other):
         assert self.time_mesh == other.time_mesh
-        self.data[:] -= other.data[:]
+        assert self.target_shape == other.target_shape
+        for sd, od in zip(self.data, other.data): sd -= od
         return self
 
     def __imul__(self, x):
-        self.data[:] *= x
+        for sd in self.data: sd *= x
         return self
 
     def __add__(self, other):
@@ -284,10 +297,10 @@ class KeldyshVertex3:
 
     def __rmul__(self, x):
         res = deepcopy(self)
-        res.data[:] = x * res.data[:]
+        res *= x
         return res
 
     def __neg__(self):
         res = deepcopy(self)
-        res.data *= -1
+        res *= -1
         return res
