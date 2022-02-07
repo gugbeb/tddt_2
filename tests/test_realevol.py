@@ -10,10 +10,11 @@ from realevol.tinterp import TInterp as ti
 from realevol.operators_tinterp import *
 from realevol.init_state import *
 
-from tddt.keldysh import KeldyshGF
+from tddt.keldysh import Branch, KeldyshGF
 from tddt.realevol import (
     compute_keldysh_gf,
     compute_keldysh_gf_element,
+    compute_keldysh_correlator_2t,
     compute_keldysh_vertex3
 )
 
@@ -79,6 +80,34 @@ class test_realevol(unittest.TestCase):
             assert_array_almost_equal(g.mesh, g_el.mesh)
             assert_array_almost_equal(g.target_shape, g_el.target_shape)
             assert_array_almost_equal(g.data, g_el.data)
+
+    def test_compute_keldysh_correlator_2t(self):
+        # Correlator <S_{z,0}(t) D_{z,0}(t')>
+        Sz = (n('up', 0) - n('dn', 0)) / 2
+        SzSz = compute_keldysh_correlator_2t(Sz, Sz,
+                                             self.init_state,
+                                             self.h,
+                                             self.t_mesh,
+                                             self.params)
+        assert_array_almost_equal(
+          SzSz[Branch.BACKWARD, Branch.FORWARD].data,
+          np.transpose(SzSz[Branch.FORWARD, Branch.BACKWARD].data)
+        )
+
+        # GF of fermions
+        g = compute_keldysh_correlator_2t(-1j * c('up', 0), c_dag('up', 1),
+                                          self.init_state,
+                                          self.h,
+                                          self.t_mesh,
+                                          self.params)
+
+        g_ref = compute_keldysh_gf_element(('up', 0), ('up', 1),
+                                           self.init_state,
+                                           self.h,
+                                           self.t_mesh,
+                                           self.params)
+        for b0, b1 in product(Branch, Branch):
+            assert_array_almost_equal(g[b0, b1].data, g_ref[b0, b1].data)
 
     def test_compute_keldysh_vertex3(self):
         Lambda = compute_keldysh_vertex3(('up', 0),

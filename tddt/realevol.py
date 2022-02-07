@@ -58,6 +58,21 @@ def compute_keldysh_gf_element(c_indices,
     g_l.data[:] = 1j * np.transpose(g_l.data)
     return KeldyshGF(g_l, g_g)
 
+def compute_keldysh_correlator_2t(A, B, init_state, h, t_mesh, params):
+    """Use realevol to compute a 2-point correlator of operators A and B"""
+    op_module = _select_op_module(A)
+    assert op_module == _select_op_module(B)
+
+    minus = (op_module.operator_stat(A) == "Fermion") and \
+            (op_module.operator_stat(B) == "Fermion")
+    AB_corr, BA_corr = compute_correlator_2t([(A, B), (B, A)],
+                                             init_state,
+                                             h,
+                                             t_mesh,
+                                             params)
+    BA_corr.data[:] = (-1 if minus else 1) * np.transpose(BA_corr.data)
+    return KeldyshGF(BA_corr, AB_corr)
+
 def compute_keldysh_vertex3(c_indices,
                             c_dag_indices,
                             n_op,
