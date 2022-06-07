@@ -65,11 +65,50 @@ def compute_keldysh_correlator_2t(A, B, init_state, h, t_mesh, params):
 
     minus = (op_module.operator_stat(A) == "Fermion") and \
             (op_module.operator_stat(B) == "Fermion")
+
+    verb = params.get('verbosity', 0) > 0
+
+    if verb:
+        print(f"Computing correlators <{A},{B}> and <{B},{A}>")
     AB_corr, BA_corr = compute_correlator_2t([(A, B), (B, A)],
                                              init_state,
                                              h,
                                              t_mesh,
                                              params)
+    BA_corr.data[:] = (-1 if minus else 1) * np.transpose(BA_corr.data)
+    return KeldyshGF(BA_corr, AB_corr)
+
+def compute_keldysh_conn_correlator_2t(A, B, init_state, h, t_mesh, params):
+    """
+    Use realevol to compute a connected 2-point correlator of operators A and B,
+
+        <T (A(t) - <A(t)>) (B(t') - <B(t')>)>
+    """
+    op_module = _select_op_module(A)
+    assert op_module == _select_op_module(B)
+
+    minus = (op_module.operator_stat(A) == "Fermion") and \
+            (op_module.operator_stat(B) == "Fermion")
+
+    verb = params.get('verbosity', 0) > 0
+
+    if verb:
+        print("Computing time-dependent expectation values of", A, "and", B)
+    A_aver, B_aver = compute_expectval([A, B], init_state, h, t_mesh, params)
+
+    if verb:
+        print(f"Computing correlators <{A},{B}> and <{B},{A}>")
+    AB_corr, BA_corr = compute_correlator_2t([(A, B), (B, A)],
+                                             init_state,
+                                             h,
+                                             t_mesh,
+                                             params)
+
+    for (t1, t2) in AB_corr.mesh:
+        AB_corr[t1, t2] -= A_aver[t1] * B_aver[t2]
+    for (t2, t1) in BA_corr.mesh:
+        BA_corr[t2, t1] -= A_aver[t1] * B_aver[t2]
+
     BA_corr.data[:] = (-1 if minus else 1) * np.transpose(BA_corr.data)
     return KeldyshGF(BA_corr, AB_corr)
 

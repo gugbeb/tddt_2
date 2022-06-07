@@ -15,6 +15,7 @@ from tddt.realevol import (
     compute_keldysh_gf,
     compute_keldysh_gf_element,
     compute_keldysh_correlator_2t,
+    compute_keldysh_conn_correlator_2t,
     compute_keldysh_vertex3
 )
 
@@ -82,7 +83,7 @@ class test_realevol(unittest.TestCase):
             assert_array_almost_equal(g.data, g_el.data)
 
     def test_compute_keldysh_correlator_2t(self):
-        # Correlator <S_{z,0}(t) D_{z,0}(t')>
+        # Correlator <S_{z,0}(t) S_{z,0}(t')>
         Sz = (n('up', 0) - n('dn', 0)) / 2
         SzSz = compute_keldysh_correlator_2t(Sz, Sz,
                                              self.init_state,
@@ -108,6 +109,19 @@ class test_realevol(unittest.TestCase):
                                            self.params)
         for b0, b1 in product(Branch, Branch):
             assert_array_almost_equal(g[b0, b1].data, g_ref[b0, b1].data)
+
+    def test_compute_keldysh_conn_correlator_2t(self):
+        # Correlator <\rho_{z,0}(t) \rho_{z,0}(t')>
+        N = n('up', 0) + n('dn', 0)
+        rhorho = compute_keldysh_conn_correlator_2t(N, N,
+                                                    self.init_state,
+                                                    self.h,
+                                                    self.t_mesh,
+                                                    self.params)
+        assert_array_almost_equal(
+          rhorho[Branch.BACKWARD, Branch.FORWARD].data,
+          np.transpose(rhorho[Branch.FORWARD, Branch.BACKWARD].data)
+        )
 
     def test_compute_keldysh_vertex3(self):
         Lambda = compute_keldysh_vertex3(('up', 0),
