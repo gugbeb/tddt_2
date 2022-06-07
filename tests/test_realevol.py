@@ -4,11 +4,12 @@ import numpy as np
 from numpy.testing import assert_array_almost_equal
 
 import triqs.utility.mpi
-from triqs.gf import MeshReTime
+from triqs.gf import MeshReTime, Gf
 
 from realevol.tinterp import TInterp as ti
 from realevol.operators_tinterp import *
 from realevol.init_state import *
+from realevol.realevol import compute_expectval
 
 from tddt.keldysh import Branch, KeldyshGF
 from tddt.realevol import (
@@ -111,17 +112,48 @@ class test_realevol(unittest.TestCase):
             assert_array_almost_equal(g[b0, b1].data, g_ref[b0, b1].data)
 
     def test_compute_keldysh_conn_correlator_2t(self):
-        # Correlator <\rho_{z,0}(t) \rho_{z,0}(t')>
-        N = n('up', 0) + n('dn', 0)
-        rhorho = compute_keldysh_conn_correlator_2t(N, N,
-                                                    self.init_state,
-                                                    self.h,
-                                                    self.t_mesh,
-                                                    self.params)
-        assert_array_almost_equal(
-          rhorho[Branch.BACKWARD, Branch.FORWARD].data,
-          np.transpose(rhorho[Branch.FORWARD, Branch.BACKWARD].data)
-        )
+        N0 = n('up', 0) + n('dn', 0)
+        N1 = n('up', 1) + n('dn', 1)
+
+        # Correlator <N_0(t) N_1(t')>
+        N0N1 = compute_keldysh_correlator_2t(N0, N1,
+                                             self.init_state,
+                                             self.h,
+                                             self.t_mesh,
+                                             self.params)
+        # Correlator <\rho_0(t) \rho_1(t')>
+        rho0rho1 = compute_keldysh_conn_correlator_2t(N0, N1,
+                                                      self.init_state,
+                                                      self.h,
+                                                      self.t_mesh,
+                                                      self.params)
+
+        # <N_0(t)>
+        N0_aver = compute_expectval(N0, self.init_state,
+                                    self.h,
+                                    self.t_mesh,
+                                    self.params)
+        # <N_1(t)>
+        N1_aver = compute_expectval(N1, self.init_state,
+                                    self.h,
+                                    self.t_mesh,
+                                    self.params)
+
+        N0_aver_N1_aver = Gf(mesh=N0N1.time_mesh,
+                             target_shape=N0N1.target_shape)
+        for t1, t2 in N0_aver_N1_aver.mesh:
+            N0_aver_N1_aver[t1, t2] = N0_aver[t1] * N1_aver[t2]
+        N1_aver_N0_aver = Gf(mesh=N0N1.time_mesh,
+                             target_shape=N0N1.target_shape)
+        for t2, t1 in N1_aver_N0_aver.mesh:
+            N1_aver_N0_aver[t2, t1] = N0_aver[t1] * N1_aver[t2]
+        N1_aver_N0_aver.data[:] = np.transpose(N1_aver_N0_aver.data)
+
+        rho0rho1_ref = N0N1 - KeldyshGF(N0_aver_N1_aver, N1_aver_N0_aver)
+
+        for b0, b1 in product(Branch, Branch):
+            assert_array_almost_equal(rho0rho1[b0, b1].data,
+                                      rho0rho1_ref[b0, b1].data)
 
     def test_compute_keldysh_vertex3(self):
         Lambda = compute_keldysh_vertex3(('up', 0),
