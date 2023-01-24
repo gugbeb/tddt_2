@@ -139,11 +139,11 @@ class test_realevol(unittest.TestCase):
                                     self.t_mesh,
                                     self.params)
 
-        N0_aver_N1_aver = Gf(mesh=N0N1.time_mesh,
+        N0_aver_N1_aver = Gf(mesh=N0N1.comp_mesh,
                              target_shape=N0N1.target_shape)
         for t1, t2 in N0_aver_N1_aver.mesh:
             N0_aver_N1_aver[t1, t2] = N0_aver[t1] * N1_aver[t2]
-        N1_aver_N0_aver = Gf(mesh=N0N1.time_mesh,
+        N1_aver_N0_aver = Gf(mesh=N0N1.comp_mesh,
                              target_shape=N0N1.target_shape)
         for t2, t1 in N1_aver_N0_aver.mesh:
             N1_aver_N0_aver[t2, t1] = N0_aver[t1] * N1_aver[t2]

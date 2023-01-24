@@ -5,19 +5,24 @@
 from enum import Enum
 from copy import deepcopy
 from itertools import product
-from typing import Tuple, Union, Dict
-from numpy import zeros, ones
-from triqs.gf import Gf
+from typing import Tuple, Dict
+from numpy import ones, einsum
+from triqs.gf import Gf, MeshReTime, MeshPoint
+
 
 class Branch(Enum):
     """Branch of the Keldysh contour"""
     FORWARD = 0
     BACKWARD = 1
 
+
 class ContourPoint:
-    """Point on the Keldysh contour, combination of a branch and a real time point"""
+    """
+    Point on the Keldysh contour, combination of a branch and a real time point
+    """
 
     def __init__(self, branch, t):
+        assert isinstance(t, MeshPoint)
         self.branch = branch
         self.t = t
 
@@ -34,6 +39,7 @@ class ContourPoint:
         else:
             return self.branch.value < other.branch.value
 
+
 def contour_ordering2(*points):
     """
     Contour ordering of two points
@@ -43,7 +49,8 @@ def contour_ordering2(*points):
     points on the forward branch comes in the original order in the output
     permutation, while for the backward branch the order is reversed.
     """
-    return tuple(sorted((0, 1), key = lambda n: points[n], reverse = True))
+    return tuple(sorted((0, 1), key=lambda n: points[n], reverse=True))
+
 
 def contour_ordering3(*points):
     """
@@ -54,7 +61,16 @@ def contour_ordering3(*points):
     points on the forward branch comes in the original order in the output
     permutation, while for the backward branch the order is reversed.
     """
-    return tuple(sorted((0, 1, 2), key = lambda n: points[n], reverse = True))
+    return tuple(sorted((0, 1, 2), key=lambda n: points[n], reverse=True))
+
+
+def slice_gf_2t(g: Gf, t0, t1):
+    """
+    Slice a Green's function object over the first two time arguments
+    """
+    n_non_t_mesh_comp = len(g.mesh.components) - 2
+    return g[(t0, t1) + (slice(None),) * n_non_t_mesh_comp]
+
 
 class KeldyshGF:
     """Single-particle Green's function on the Keldysh contour"""
@@ -62,37 +78,45 @@ class KeldyshGF:
     def __init__(self, g_l, g_g):
         assert g_l.mesh == g_g.mesh
         assert g_l.target_shape == g_g.target_shape
-        self.time_mesh = g_l.mesh
+        assert len(g_l.mesh.components) >= 2
+        assert isinstance(g_l.mesh[0], MeshReTime)
+        assert isinstance(g_l.mesh[1], MeshReTime)
+        assert g_l.mesh[0] == g_l.mesh[1]
+
+        self.comp_mesh = g_l.mesh
         self.target_shape = g_l.target_shape
 
         # The following precondition is relied upon by __matmul__()
-        assert len(g_l.mesh) % 2 == 1, \
+        assert len(g_l.mesh[0]) % 2 == 1, \
                "Time grid must have an odd number of nodes"
 
         # 4 Keldysh components as real time GFs
         self.data = []
         for _ in range(4):
             self.data.append(
-                Gf(mesh=self.time_mesh, target_shape=self.target_shape)
+                Gf(mesh=self.comp_mesh, target_shape=self.target_shape)
             )
 
         #
         # Fill Keldysh components
         #
 
-        ordered = lambda z0, z1: contour_ordering2(z0, z1) == (0, 1)
+        def ordered(z0, z1):
+            return contour_ordering2(z0, z1) == (0, 1)
 
         # Aoki RMP, Eqs. (17)
         self[Branch.BACKWARD, Branch.FORWARD] = g_g
         self[Branch.FORWARD, Branch.BACKWARD] = g_l
         # Aoki RMP, Eqs. (15)
-        for t0, t1 in self.time_mesh:
+        for t0, t1 in product(*self.comp_mesh.components[:2]):
             z0 = ContourPoint(Branch.FORWARD, t0)
             z1 = ContourPoint(Branch.FORWARD, t1)
-            self[z0, z1] = g_g[t0, t1] if ordered(z0, z1) else g_l[t0, t1]
+            self[z0, z1] = slice_gf_2t(g_g, t0, t1) if ordered(z0, z1) \
+                else slice_gf_2t(g_l, t0, t1)
             z0 = ContourPoint(Branch.BACKWARD, t0)
             z1 = ContourPoint(Branch.BACKWARD, t1)
-            self[z0, z1] = g_g[t0, t1] if ordered(z0, z1) else g_l[t0, t1]
+            self[z0, z1] = slice_gf_2t(g_g, t0, t1) if ordered(z0, z1) \
+                else slice_gf_2t(g_l, t0, t1)
 
     def _ravel_branch_indices(self, b1, b2):
         return 2 * b1.value + b2.value
@@ -103,9 +127,11 @@ class KeldyshGF:
             return self.data[self._ravel_branch_indices(*points)]
         # Access a single element
         elif all(isinstance(p, ContourPoint) for p in points):
-            return self.data[
-                self._ravel_branch_indices(points[0].branch, points[1].branch)][
-                points[0].t, points[1].t]
+            g = self.data[self._ravel_branch_indices(points[0].branch,
+                                                     points[1].branch)]
+            n_non_t_mesh_comp = len(g.mesh.components) - 2
+            return g[(points[0].t, points[1].t)
+                     + (slice(None),) * n_non_t_mesh_comp]
         else:
             raise IndexError("Unrecognized index format")
 
@@ -115,9 +141,11 @@ class KeldyshGF:
             self.data[self._ravel_branch_indices(*points)] = value
         # Access a single element
         elif all(isinstance(p, ContourPoint) for p in points):
-            self.data[self._ravel_branch_indices(points[0].branch,
-                                                 points[1].branch)][
-                      points[0].t, points[1].t] = value
+            g = self.data[self._ravel_branch_indices(points[0].branch,
+                                                     points[1].branch)]
+            n_non_t_mesh_comp = len(g.mesh.components) - 2
+            g[(points[0].t, points[1].t)
+              + (slice(None),) * n_non_t_mesh_comp] = value
         else:
             raise IndexError("Unrecognized index format")
 
@@ -126,19 +154,22 @@ class KeldyshGF:
     #
 
     def __iadd__(self, other):
-        assert self.time_mesh == other.time_mesh
+        assert self.comp_mesh == other.comp_mesh
         assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data): sd += od
+        for sd, od in zip(self.data, other.data):
+            sd += od
         return self
 
     def __isub__(self, other):
-        assert self.time_mesh == other.time_mesh
+        assert self.comp_mesh == other.comp_mesh
         assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data): sd -= od
+        for sd, od in zip(self.data, other.data):
+            sd -= od
         return self
 
     def __imul__(self, x):
-        for sd in self.data: sd *= x
+        for sd in self.data:
+            sd *= x
         return self
 
     def __add__(self, other):
@@ -168,28 +199,58 @@ class KeldyshGF:
 
     def __matmul__(self, other):
         """Contour convolution"""
-        assert self.time_mesh == other.time_mesh
-        assert self.target_shape == other.target_shape
+        assert self.comp_mesh == other.comp_mesh
         # Weights for Simpson’s rule
-        w = ones(len(self.time_mesh[0]))
+        w = ones(len(self.comp_mesh[0]))
         w[1:-1:2] = 4
         w[2:-1:2] = 2
-        w *= self.time_mesh[0].delta / 3
+        w *= self.comp_mesh[0].delta / 3
+
         res = deepcopy(self)
-        # TODO: For now, we assume that all real-time GFs are scalar-valued
-        # and self.data.ndim == 2.
+
+        target_shape = ()
+
+        subscripts_self = "ik..."
+        subscripts_other = "kj..."
+        subscripts_res = "ij..."
+
+        if len(self.target_shape) == 1:  # Vector-valued
+            subscripts_self += "l"
+        elif len(self.target_shape) == 2:  # Matrix-valued
+            subscripts_self += "ml"
+            subscripts_res += "m"
+            target_shape = target_shape + (self.target_shape[0],)
+        elif len(self.target_shape) > 2:
+            raise RuntimeError("Contour convolution is not implemented "
+                               " for target dimensions > 2")
+
+        if len(other.target_shape) == 1:  # Vector-valued
+            subscripts_other += "l"
+        elif len(other.target_shape) == 2:  # Matrix-valued
+            subscripts_other += "ln"
+            subscripts_res += "n"
+            target_shape = target_shape + (other.target_shape[1],)
+        elif len(self.target_shape) > 2:
+            raise RuntimeError("Contour convolution is not implemented "
+                               " for target dimensions > 2")
+
+        subscripts = f"{subscripts_self},k,{subscripts_other}->{subscripts_res}"
+
+        res.target_shape = target_shape
+
+        FW, BW = Branch.FORWARD, Branch.BACKWARD
         for b0, b1 in product(Branch, Branch):
             res[b0, b1].data[:] = \
-                (self[b0, Branch.FORWARD].data * w) @ \
-                 other[Branch.FORWARD, b1].data - \
-                (self[b0, Branch.BACKWARD].data * w) @ \
-                 other[Branch.BACKWARD, b1].data
+                einsum(subscripts, self[b0, FW].data, w, other[FW, b1].data) - \
+                einsum(subscripts, self[b0, BW].data, w, other[BW, b1].data)
+
         return res
+
 
 class KeldyshVertex3:
     """Three-point vertex function <c c^+ \\rho> on the Keldysh contour"""
 
-    def __init__(self, G: Dict[Tuple[int,int,int], Gf]):
+    def __init__(self, G: Dict[Tuple[int, int, int], Gf]):
         r"""
         Each element of dictionary G corresponds to one permutation of operators
         in the correlator,
@@ -205,24 +266,24 @@ class KeldyshVertex3:
         """
 
         assert len(G) == 6
-        self.time_mesh = next(iter(G.values())).mesh
+        self.comp_mesh = next(iter(G.values())).mesh
         self.target_shape = next(iter(G.values())).target_shape
-        assert all(p.mesh == self.time_mesh for p in G.values())
+        assert all(p.mesh == self.comp_mesh for p in G.values())
         assert all(p.target_shape == self.target_shape for p in G.values())
 
         # 8 Keldysh components as real time GFs
         self.data = []
         for _ in range(8):
             self.data.append(
-                Gf(mesh=self.time_mesh, target_shape=self.target_shape)
+                Gf(mesh=self.comp_mesh, target_shape=self.target_shape)
             )
 
         #
         # Fill Keldysh components
         #
 
-        for a0, a1, a2 in product(Branch, repeat = 3):
-            for t0, t1, t2 in self.time_mesh:
+        for a0, a1, a2 in product(Branch, repeat=3):
+            for t0, t1, t2 in self.comp_mesh:
                 z0 = ContourPoint(a0, t0)
                 z1 = ContourPoint(a1, t1)
                 z2 = ContourPoint(a2, t2)
@@ -241,9 +302,7 @@ class KeldyshVertex3:
             return self.data[self._ravel_branch_indices(points[0].branch,
                                                         points[1].branch,
                                                         points[2].branch)][
-                             points[0].t,
-                             points[1].t,
-                             points[2].t]
+                points[0].t, points[1].t, points[2].t]
         else:
             raise IndexError("Unrecognized index format")
 
@@ -256,7 +315,7 @@ class KeldyshVertex3:
             self.data[self._ravel_branch_indices(points[0].branch,
                                                  points[1].branch,
                                                  points[2].branch)][
-                      points[0].t, points[1].t, points[2].t] = value
+                points[0].t, points[1].t, points[2].t] = value
         else:
             raise IndexError("Unrecognized index format")
 
@@ -265,19 +324,22 @@ class KeldyshVertex3:
     #
 
     def __iadd__(self, other):
-        assert self.time_mesh == other.time_mesh
+        assert self.comp_mesh == other.comp_mesh
         assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data): sd += od
+        for sd, od in zip(self.data, other.data):
+            sd += od
         return self
 
     def __isub__(self, other):
-        assert self.time_mesh == other.time_mesh
+        assert self.comp_mesh == other.comp_mesh
         assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data): sd -= od
+        for sd, od in zip(self.data, other.data):
+            sd -= od
         return self
 
     def __imul__(self, x):
-        for sd in self.data: sd *= x
+        for sd in self.data:
+            sd *= x
         return self
 
     def __add__(self, other):

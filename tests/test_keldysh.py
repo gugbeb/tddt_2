@@ -3,11 +3,19 @@ from numpy.testing import assert_array_equal, assert_array_almost_equal
 from itertools import product
 import numpy as np
 
-from triqs.gf import MeshReTime, GfReTime, MeshProduct
+from triqs.gf import MeshReTime, GfReTime, MeshBrillouinZone, MeshProduct, Gf
+from triqs.gf.descriptors import Function
+from triqs.lattice import BravaisLattice, BrillouinZone
 
-from tddt.keldysh import *
+from tddt.keldysh import (Branch,
+                          ContourPoint,
+                          contour_ordering2,
+                          contour_ordering3,
+                          KeldyshGF,
+                          KeldyshVertex3)
 
 CP = ContourPoint
+
 
 class test_keldysh(unittest.TestCase):
     """Keldysh Green's functions and vertices"""
@@ -164,25 +172,7 @@ class test_keldysh(unittest.TestCase):
         self.assertEqual(order(CP(BW, t2), CP(FW, t1), CP(BW, t2)), (2, 0, 1))
         self.assertEqual(order(CP(BW, t1), CP(FW, t1), CP(BW, t1)), (2, 0, 1))
 
-    def test_keldysh_gf(self):
-        # Construct from scalar-valued lesser and greater GF
-        g_l = GfReTime(mesh = self.tt_mesh, target_shape = ())
-        g_g = GfReTime(mesh = self.tt_mesh, target_shape = ())
-        g = KeldyshGF(g_l, g_g)
-        self.assertEqual(len(g.data), 4)
-        for i in range(4):
-            self.assertEqual(g.data[i].data.shape, (self.n_t, self.n_t))
-
-        # Construct from matrix-valued lesser and greater GF
-        g_l = GfReTime(mesh = self.tt_mesh, target_shape = (2, 2))
-        g_g = GfReTime(mesh = self.tt_mesh, target_shape = (2, 2))
-        g_l.data[:] = 2.0
-        g_g.data[:] = 3.0
-        g = KeldyshGF(g_l[0, 1], g_g[1, 0])
-        self.assertEqual(len(g.data), 4)
-        for i in range(4):
-            self.assertEqual(g.data[i].data.shape, (self.n_t, self.n_t))
-
+    def _test_gf(self, g):
         # Check Aoki RMP Eq. (16)
         g11 = g[Branch.FORWARD, Branch.FORWARD]
         g12 = g[Branch.FORWARD, Branch.BACKWARD]
@@ -190,57 +180,112 @@ class test_keldysh(unittest.TestCase):
         g22 = g[Branch.BACKWARD, Branch.BACKWARD]
         assert_array_almost_equal((g11 + g22).data, (g12 + g21).data)
 
+        non_t_shape = tuple(len(m) for m in g.comp_mesh.components[2:]) \
+            + g.target_shape
+
         FW, BW = Branch.FORWARD, Branch.BACKWARD
         t = next(iter(self.t_mesh))
 
-        g[CP(BW, t), CP(FW, t)] = 3.0
-        self.assertEqual(g[CP(BW, t), CP(FW, t)], 3.0)
+        if len(g.comp_mesh.components) == 2:
+            g[CP(BW, t), CP(FW, t)] = 3.0
+        else:
+            g[CP(BW, t), CP(FW, t)] = Function(lambda i: 3.0)
+        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+                           3.0 * np.ones(non_t_shape))
 
-
-        g[BW, FW].data[:] = 2 * np.ones((self.n_t, self.n_t))
-        assert_array_equal(g[BW, FW].data, 2*np.ones((self.n_t, self.n_t)))
+        g[BW, FW].data[:] = 2 * np.ones((self.n_t, self.n_t, *non_t_shape))
+        assert_array_equal(g[BW, FW].data,
+                           2 * np.ones((self.n_t, self.n_t, *non_t_shape)))
 
         # Multiplication by a scalar
         g *= 3
-        self.assertEqual(g[CP(BW, t), CP(FW, t)], 6.0)
+        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+                           6.0 * np.ones(non_t_shape))
 
         # Addition
         g += g
-        self.assertEqual(g[CP(BW, t), CP(FW, t)], 12.0)
-        self.assertEqual((g + g)[CP(BW, t), CP(FW, t)], 24.0)
+        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+                           12.0 * np.ones(non_t_shape))
+        assert_array_equal((g + g)[CP(BW, t), CP(FW, t)].data,
+                           24.0 * np.ones(non_t_shape))
 
         # Subtraction
         g -= 0.5 * g
-        self.assertEqual(g[CP(BW, t), CP(FW, t)], 6.0)
-        self.assertEqual((g - g)[CP(BW, t), CP(FW, t)], 0.0)
+        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+                           6.0 * np.ones(non_t_shape))
+        assert_array_equal((g - g)[CP(BW, t), CP(FW, t)].data,
+                           0.0 * np.ones(non_t_shape))
 
         # Unary minus
-        self.assertEqual((-g)[CP(BW, t), CP(FW, t)], -6.0)
+        assert_array_equal((-g)[CP(BW, t), CP(FW, t)].data,
+                           -6.0 * np.ones(non_t_shape))
 
         # Convolution
         conv = g @ (2 * g)
-        self.assertEqual(conv.time_mesh, g.time_mesh)
+        self.assertEqual(conv.comp_mesh, g.comp_mesh)
         self.assertEqual(conv.target_shape, g.target_shape)
+
+    def test_keldysh_gf(self):
+        for target_shape in ((), (2, 2)):
+            # Construct from lesser and greater GF
+            g_l = Gf(mesh=self.tt_mesh, target_shape=target_shape)
+            g_g = Gf(mesh=self.tt_mesh, target_shape=target_shape)
+
+            g_l.data[:] = 2.0
+            g_g.data[:] = 3.0
+            g = KeldyshGF(g_l, g_g)
+            self.assertEqual(len(g.data), 4)
+
+            for i in range(4):
+                self.assertEqual(g.data[i].data.shape,
+                                 (self.n_t, self.n_t) + target_shape)
+
+            self._test_gf(g)
+
+    def test_keldysh_gf_bz(self):
+        bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # Square lattice
+        n_k = 10
+        bz_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k)
+
+        mesh = MeshProduct(*self.tt_mesh.components, bz_mesh)
+
+        for target_shape in ((), (2, 2)):
+            # Construct from lesser and greater GF with an extra
+            # Brillouin zone mesh component
+            g_l = Gf(mesh=mesh, target_shape=target_shape)
+            g_g = Gf(mesh=mesh, target_shape=target_shape)
+
+            g_l.data[:] = 2.0
+            g_g.data[:] = 3.0
+            g = KeldyshGF(g_l, g_g)
+            self.assertEqual(len(g.data), 4)
+
+            for i in range(4):
+                self.assertEqual(g.data[i].data.shape,
+                                 (self.n_t, self.n_t, n_k**2) + target_shape)
+
+            self._test_gf(g)
 
     def test_keldysh_vertex3(self):
 
         def make_time_piece(x):
-            g = GfReTime(mesh = self.ttt_mesh, target_shape = ())
+            g = GfReTime(mesh=self.ttt_mesh, target_shape=())
             g.data[:] = x
             return g
-        G = {(0, 1, 2) : make_time_piece(1.0),
-             (0, 2, 1) : make_time_piece(2.0),
-             (1, 0, 2) : make_time_piece(3.0),
-             (1, 2, 0) : make_time_piece(4.0),
-             (2, 0, 1) : make_time_piece(5.0),
-             (2, 1, 0) : make_time_piece(6.0)}
+        G = {(0, 1, 2): make_time_piece(1.0),
+             (0, 2, 1): make_time_piece(2.0),
+             (1, 0, 2): make_time_piece(3.0),
+             (1, 2, 0): make_time_piece(4.0),
+             (2, 0, 1): make_time_piece(5.0),
+             (2, 1, 0): make_time_piece(6.0)}
 
         FW, BW = Branch.FORWARD, Branch.BACKWARD
 
         Lambda = KeldyshVertex3(G)
         for a0, a1, a2 in product(Branch, repeat=3):
             for t0, t1, t2 in self.ttt_mesh:
-                self.assertNotEqual(Lambda[CP(a0, t0), CP(a1, t1), CP(a2, t2)], 0)
+                self.assertNotEqual(Lambda[CP(a0, t0), CP(a1, t1), CP(a2, t2)],
+                                    0)
 
         t = next(iter(self.t_mesh))
 
@@ -260,15 +305,18 @@ class test_keldysh(unittest.TestCase):
         # Addition
         Lambda += Lambda
         self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 12.0)
-        self.assertEqual((Lambda + Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)], 24.0)
+        self.assertEqual((Lambda + Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)],
+                         24.0)
 
         ## Subtraction
         Lambda -= 0.5 * Lambda
         self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 6.0)
-        self.assertEqual((Lambda - Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)], 0.0)
+        self.assertEqual((Lambda - Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)],
+                         0.0)
 
         # Unary minus
         self.assertEqual((-Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)], -6.0)
+
 
 if __name__ == '__main__':
     unittest.main()
