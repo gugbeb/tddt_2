@@ -277,7 +277,7 @@ class test_keldysh(unittest.TestCase):
              (2, 0, 1): make_time_piece(5.0),
              (2, 1, 0): make_time_piece(6.0)}
 
-        Lambda = KeldyshVertex3(G)
+        Lambda = KeldyshVertex3.from_G_perm_pieces(G)
         for a0, a1, a2 in product(Branch, repeat=3):
             for t0, t1, t2 in self.ttt_mesh:
                 self.assertNotEqual(Lambda[CP(a0, t0), CP(a1, t1), CP(a2, t2)],

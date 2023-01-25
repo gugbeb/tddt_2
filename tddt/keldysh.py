@@ -258,7 +258,24 @@ class KeldyshGF:
 class KeldyshVertex3:
     """Three-point vertex function <c c^+ \\rho> on the Keldysh contour"""
 
-    def __init__(self, G: Dict[Tuple[int, int, int], Gf]):
+    def __init__(self, mesh: MeshProduct, target_shape):
+        # The mesh must at least have three real time components
+        assert len(mesh.components) >= 3
+        assert isinstance(mesh.components[0], MeshReTime)
+        assert isinstance(mesh.components[1], MeshReTime)
+        assert isinstance(mesh.components[2], MeshReTime)
+
+        self.mesh = mesh
+        self.time_mesh = MeshProduct(mesh.components[0],
+                                     mesh.components[1],
+                                     mesh.components[2])
+        self.target_shape = target_shape
+
+        # 8 Keldysh components as real time GFs
+        self.data = [Gf(mesh=mesh, target_shape=target_shape) for _ in range(8)]
+
+    @classmethod
+    def from_G_perm_pieces(cls, G: Dict[Tuple[int, int, int], Gf]):
         r"""
         Each element of dictionary G corresponds to one permutation of operators
         in the correlator,
@@ -274,29 +291,26 @@ class KeldyshVertex3:
         """
 
         assert len(G) == 6
-        self.mesh = next(iter(G.values())).mesh
-        self.target_shape = next(iter(G.values())).target_shape
-        assert all(p.mesh == self.mesh for p in G.values())
-        assert all(p.target_shape == self.target_shape for p in G.values())
+        mesh = next(iter(G.values())).mesh
+        target_shape = next(iter(G.values())).target_shape
+        assert all(p.mesh == mesh for p in G.values())
+        assert all(p.target_shape == target_shape for p in G.values())
 
-        # 8 Keldysh components as real time GFs
-        self.data = []
-        for _ in range(8):
-            self.data.append(
-                Gf(mesh=self.mesh, target_shape=self.target_shape)
-            )
+        Lambda = KeldyshVertex3(mesh, target_shape)
 
         #
         # Fill Keldysh components
         #
 
         for a0, a1, a2 in product(Branch, repeat=3):
-            for t0, t1, t2 in self.mesh:
+            for t0, t1, t2 in Lambda.mesh:
                 z0 = ContourPoint(a0, t0)
                 z1 = ContourPoint(a1, t1)
                 z2 = ContourPoint(a2, t2)
                 order = contour_ordering3(z0, z1, z2)
-                self[z0, z1, z2] = G[order][t0, t1, t2]
+                Lambda[z0, z1, z2] = G[order][t0, t1, t2]
+
+        return Lambda
 
     def _ravel_branch_indices(self, b1, b2, b3):
         return 4 * b1.value + 2 * b2.value + b3.value
