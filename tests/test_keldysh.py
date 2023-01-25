@@ -15,6 +15,7 @@ from tddt.keldysh import (Branch,
                           KeldyshVertex3)
 
 CP = ContourPoint
+FW, BW = Branch.FORWARD, Branch.BACKWARD
 
 
 class test_keldysh(unittest.TestCase):
@@ -30,7 +31,6 @@ class test_keldysh(unittest.TestCase):
         cls.t_points = list(cls.t_mesh)
 
     def test_contour_ordering2(self):
-        FW, BW = Branch.FORWARD, Branch.BACKWARD
         t1 = self.t_points[2]
         t2 = self.t_points[3]
         order = contour_ordering2
@@ -53,7 +53,6 @@ class test_keldysh(unittest.TestCase):
         self.assertEqual(order(CP(FW, t2), CP(BW, t1)), (1, 0))
 
     def test_contour_ordering3(self):
-        FW, BW = Branch.FORWARD, Branch.BACKWARD
         t1 = self.t_points[2]
         t2 = self.t_points[3]
         t3 = self.t_points[4]
@@ -180,13 +179,12 @@ class test_keldysh(unittest.TestCase):
         g22 = g[Branch.BACKWARD, Branch.BACKWARD]
         assert_array_almost_equal((g11 + g22).data, (g12 + g21).data)
 
-        non_t_shape = tuple(len(m) for m in g.comp_mesh.components[2:]) \
+        non_t_shape = tuple(len(m) for m in g.mesh.components[2:]) \
             + g.target_shape
 
-        FW, BW = Branch.FORWARD, Branch.BACKWARD
         t = next(iter(self.t_mesh))
 
-        if len(g.comp_mesh.components) == 2:
+        if len(g.mesh.components) == 2:
             g[CP(BW, t), CP(FW, t)] = 3.0
         else:
             g[CP(BW, t), CP(FW, t)] = Function(lambda i: 3.0)
@@ -222,7 +220,7 @@ class test_keldysh(unittest.TestCase):
 
         # Convolution
         conv = g @ (2 * g)
-        self.assertEqual(conv.comp_mesh, g.comp_mesh)
+        self.assertEqual(conv.mesh, g.mesh)
         self.assertEqual(conv.target_shape, g.target_shape)
 
     def test_keldysh_gf(self):
@@ -233,7 +231,7 @@ class test_keldysh(unittest.TestCase):
 
             g_l.data[:] = 2.0
             g_g.data[:] = 3.0
-            g = KeldyshGF(g_l, g_g)
+            g = KeldyshGF.from_g_l_g_g(g_l, g_g)
             self.assertEqual(len(g.data), 4)
 
             for i in range(4):
@@ -257,7 +255,7 @@ class test_keldysh(unittest.TestCase):
 
             g_l.data[:] = 2.0
             g_g.data[:] = 3.0
-            g = KeldyshGF(g_l, g_g)
+            g = KeldyshGF.from_g_l_g_g(g_l, g_g)
             self.assertEqual(len(g.data), 4)
 
             for i in range(4):
@@ -278,8 +276,6 @@ class test_keldysh(unittest.TestCase):
              (1, 2, 0): make_time_piece(4.0),
              (2, 0, 1): make_time_piece(5.0),
              (2, 1, 0): make_time_piece(6.0)}
-
-        FW, BW = Branch.FORWARD, Branch.BACKWARD
 
         Lambda = KeldyshVertex3(G)
         for a0, a1, a2 in product(Branch, repeat=3):

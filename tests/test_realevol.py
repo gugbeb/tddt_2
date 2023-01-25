@@ -139,17 +139,18 @@ class test_realevol(unittest.TestCase):
                                     self.t_mesh,
                                     self.params)
 
-        N0_aver_N1_aver = Gf(mesh=N0N1.comp_mesh,
+        N0_aver_N1_aver = Gf(mesh=N0N1.mesh,
                              target_shape=N0N1.target_shape)
         for t1, t2 in N0_aver_N1_aver.mesh:
             N0_aver_N1_aver[t1, t2] = N0_aver[t1] * N1_aver[t2]
-        N1_aver_N0_aver = Gf(mesh=N0N1.comp_mesh,
+        N1_aver_N0_aver = Gf(mesh=N0N1.mesh,
                              target_shape=N0N1.target_shape)
         for t2, t1 in N1_aver_N0_aver.mesh:
             N1_aver_N0_aver[t2, t1] = N0_aver[t1] * N1_aver[t2]
         N1_aver_N0_aver.data[:] = np.transpose(N1_aver_N0_aver.data)
 
-        rho0rho1_ref = N0N1 - KeldyshGF(N0_aver_N1_aver, N1_aver_N0_aver)
+        rho0rho1_ref = N0N1 - KeldyshGF.from_g_l_g_g(N0_aver_N1_aver,
+                                                     N1_aver_N0_aver)
 
         for b0, b1 in product(Branch, Branch):
             assert_array_almost_equal(rho0rho1[b0, b1].data,

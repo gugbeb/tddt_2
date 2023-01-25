@@ -7,7 +7,7 @@ from copy import deepcopy
 from itertools import product
 from typing import Tuple, Dict
 from numpy import ones, einsum
-from triqs.gf import Gf, MeshReTime, MeshPoint
+from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
 
 class Branch(Enum):
@@ -64,38 +64,38 @@ def contour_ordering3(*points):
     return tuple(sorted((0, 1, 2), key=lambda n: points[n], reverse=True))
 
 
-def slice_gf_2t(g: Gf, t0, t1):
-    """
-    Slice a Green's function object over the first two time arguments
-    """
-    n_non_t_mesh_comp = len(g.mesh.components) - 2
-    return g[(t0, t1) + (slice(None),) * n_non_t_mesh_comp]
-
-
 class KeldyshGF:
     """Single-particle Green's function on the Keldysh contour"""
 
-    def __init__(self, g_l, g_g):
-        assert g_l.mesh == g_g.mesh
-        assert g_l.target_shape == g_g.target_shape
-        assert len(g_l.mesh.components) >= 2
-        assert isinstance(g_l.mesh[0], MeshReTime)
-        assert isinstance(g_l.mesh[1], MeshReTime)
-        assert g_l.mesh[0] == g_l.mesh[1]
-
-        self.comp_mesh = g_l.mesh
-        self.target_shape = g_l.target_shape
+    def __init__(self, mesh: MeshProduct, target_shape):
+        # The mesh must at least have two real time components
+        assert len(mesh.components) >= 2
+        assert isinstance(mesh.components[0], MeshReTime)
+        assert isinstance(mesh.components[1], MeshReTime)
 
         # The following precondition is relied upon by __matmul__()
-        assert len(g_l.mesh[0]) % 2 == 1, \
+        assert len(mesh.components[0]) % 2 == 1 and \
+               len(mesh.components[1]) % 2 == 1, \
                "Time grid must have an odd number of nodes"
 
+        self.mesh = mesh
+        self.time_mesh = MeshProduct(mesh.components[0], mesh.components[1])
+        self.target_shape = target_shape
+
         # 4 Keldysh components as real time GFs
-        self.data = []
-        for _ in range(4):
-            self.data.append(
-                Gf(mesh=self.comp_mesh, target_shape=self.target_shape)
-            )
+        self.data = [Gf(mesh=mesh, target_shape=target_shape) for _ in range(4)]
+
+    @classmethod
+    def from_g_l_g_g(cls, g_l, g_g):
+        """
+        Construct a KeldyshGF instance from a pair of lesser and greater
+        real time Green's functions.
+        """
+        assert g_l.mesh == g_g.mesh
+        assert g_l.target_shape == g_g.target_shape
+        assert g_l.mesh.components[0] == g_l.mesh.components[1]
+
+        g = KeldyshGF(g_l.mesh, g_l.target_shape)
 
         #
         # Fill Keldysh components
@@ -104,19 +104,26 @@ class KeldyshGF:
         def ordered(z0, z1):
             return contour_ordering2(z0, z1) == (0, 1)
 
+        def slice_gf_2t(g: Gf, t0, t1):
+            n_non_t_mesh_comp = len(g.mesh.components) - 2
+            return g[(t0, t1) + (slice(None),) * n_non_t_mesh_comp]
+
+        non_t_slice = (slice(None),) * (len(g.mesh.components) - 2)
+
         # Aoki RMP, Eqs. (17)
-        self[Branch.BACKWARD, Branch.FORWARD] = g_g
-        self[Branch.FORWARD, Branch.BACKWARD] = g_l
+        g[Branch.BACKWARD, Branch.FORWARD] = g_g
+        g[Branch.FORWARD, Branch.BACKWARD] = g_l
         # Aoki RMP, Eqs. (15)
-        for t0, t1 in product(*self.comp_mesh.components[:2]):
+        for t0, t1 in g.time_mesh:
+            sl = (t0, t1) + non_t_slice
             z0 = ContourPoint(Branch.FORWARD, t0)
             z1 = ContourPoint(Branch.FORWARD, t1)
-            self[z0, z1] = slice_gf_2t(g_g, t0, t1) if ordered(z0, z1) \
-                else slice_gf_2t(g_l, t0, t1)
+            g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
             z0 = ContourPoint(Branch.BACKWARD, t0)
             z1 = ContourPoint(Branch.BACKWARD, t1)
-            self[z0, z1] = slice_gf_2t(g_g, t0, t1) if ordered(z0, z1) \
-                else slice_gf_2t(g_l, t0, t1)
+            g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
+
+        return g
 
     def _ravel_branch_indices(self, b1, b2):
         return 2 * b1.value + b2.value
@@ -154,14 +161,14 @@ class KeldyshGF:
     #
 
     def __iadd__(self, other):
-        assert self.comp_mesh == other.comp_mesh
+        assert self.mesh == other.mesh
         assert self.target_shape == other.target_shape
         for sd, od in zip(self.data, other.data):
             sd += od
         return self
 
     def __isub__(self, other):
-        assert self.comp_mesh == other.comp_mesh
+        assert self.mesh == other.mesh
         assert self.target_shape == other.target_shape
         for sd, od in zip(self.data, other.data):
             sd -= od
@@ -199,12 +206,13 @@ class KeldyshGF:
 
     def __matmul__(self, other):
         """Contour convolution"""
-        assert self.comp_mesh == other.comp_mesh
+        assert self.mesh == other.mesh
         # Weights for Simpson’s rule
-        w = ones(len(self.comp_mesh[0]))
+        t_mesh = self.mesh.components[0]
+        w = ones(len(t_mesh))
         w[1:-1:2] = 4
         w[2:-1:2] = 2
-        w *= self.comp_mesh[0].delta / 3
+        w *= t_mesh.delta / 3
 
         res = deepcopy(self)
 
@@ -266,16 +274,16 @@ class KeldyshVertex3:
         """
 
         assert len(G) == 6
-        self.comp_mesh = next(iter(G.values())).mesh
+        self.mesh = next(iter(G.values())).mesh
         self.target_shape = next(iter(G.values())).target_shape
-        assert all(p.mesh == self.comp_mesh for p in G.values())
+        assert all(p.mesh == self.mesh for p in G.values())
         assert all(p.target_shape == self.target_shape for p in G.values())
 
         # 8 Keldysh components as real time GFs
         self.data = []
         for _ in range(8):
             self.data.append(
-                Gf(mesh=self.comp_mesh, target_shape=self.target_shape)
+                Gf(mesh=self.mesh, target_shape=self.target_shape)
             )
 
         #
@@ -283,7 +291,7 @@ class KeldyshVertex3:
         #
 
         for a0, a1, a2 in product(Branch, repeat=3):
-            for t0, t1, t2 in self.comp_mesh:
+            for t0, t1, t2 in self.mesh:
                 z0 = ContourPoint(a0, t0)
                 z1 = ContourPoint(a1, t1)
                 z2 = ContourPoint(a2, t2)
@@ -324,14 +332,14 @@ class KeldyshVertex3:
     #
 
     def __iadd__(self, other):
-        assert self.comp_mesh == other.comp_mesh
+        assert self.mesh == other.mesh
         assert self.target_shape == other.target_shape
         for sd, od in zip(self.data, other.data):
             sd += od
         return self
 
     def __isub__(self, other):
-        assert self.comp_mesh == other.comp_mesh
+        assert self.mesh == other.mesh
         assert self.target_shape == other.target_shape
         for sd, od in zip(self.data, other.data):
             sd -= od
