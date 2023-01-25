@@ -6,8 +6,10 @@ from enum import Enum
 from copy import deepcopy
 from itertools import product
 from typing import Tuple, Dict
-from numpy import ones, einsum
+from numpy import einsum
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
+
+from .util import simpsons_weights
 
 
 class Branch(Enum):
@@ -208,11 +210,7 @@ class KeldyshGF:
         """Contour convolution"""
         assert self.mesh == other.mesh
         # Weights for Simpson’s rule
-        t_mesh = self.mesh.components[0]
-        w = ones(len(t_mesh))
-        w[1:-1:2] = 4
-        w[2:-1:2] = 2
-        w *= t_mesh.delta / 3
+        w = simpsons_weights(self.mesh.components[0])
 
         res = deepcopy(self)
 
