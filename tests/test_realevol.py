@@ -3,7 +3,7 @@ from itertools import product
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 
-import triqs.utility.mpi # noqa: F401
+import triqs.utility.mpi  # noqa: F401
 from triqs.gf import MeshReTime, Gf
 
 from realevol.tinterp import TInterp as ti
@@ -71,20 +71,20 @@ class test_realevol(unittest.TestCase):
                                 self.h,
                                 self.t_mesh,
                                 self.params)
-        ref_keys = set([('up', 0, 0), ('up', 0, 1), ('up', 1, 0), ('up', 1, 1),
-                        ('dn', 0, 0), ('dn', 0, 1), ('dn', 1, 0), ('dn', 1, 1)])
-        self.assertEqual(gf.keys(), ref_keys)
+        ref_blocks = set(['up', 'dn'])
+        self.assertEqual(gf.keys(), ref_blocks)
         self.assertTrue(all(isinstance(g, KeldyshGF) for g in gf.values()))
+        self.assertTrue(all(g.target_shape == (2, 2) for g in gf.values()))
 
         gf_el = compute_keldysh_gf_element(('dn', 0), ('dn', 1),
                                            self.init_state,
                                            self.h,
                                            self.t_mesh,
                                            self.params)
-        for g, g_el in zip(gf[('dn', 0, 1)].data, gf_el.data):
+        # Iteration over Keldysh components
+        for g, g_el in zip(gf['dn'].data, gf_el.data):
             assert_array_almost_equal(g.mesh, g_el.mesh)
-            assert_array_almost_equal(g.target_shape, g_el.target_shape)
-            assert_array_almost_equal(g.data, g_el.data)
+            assert_array_almost_equal(g[0, 1].data, g_el.data)
 
     def test_compute_keldysh_correlator_2t(self):
         # Correlator <S_{z,0}(t) S_{z,0}(t')>

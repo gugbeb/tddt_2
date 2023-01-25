@@ -1,4 +1,4 @@
-from itertools import product, permutations
+from itertools import permutations
 import numpy as np
 
 # Inexplicably, the batch versions of `compute_*()` segfault in the cpp2py
@@ -36,9 +36,7 @@ def compute_keldysh_gf(gf_struct, init_state, h, t_mesh, params):
     g_g = compute_g_g(gf_struct, init_state, h, t_mesh, params)
     gf = {}
     for bl, ind in gf_struct:
-        for i, j in product(ind, ind):
-            gf[(bl, i, j)] = KeldyshGF.from_g_l_g_g(g_l[bl][i, j],
-                                                    g_g[bl][i, j])
+        gf[bl] = KeldyshGF.from_g_l_g_g(g_l[bl], g_g[bl])
     return gf
 
 
