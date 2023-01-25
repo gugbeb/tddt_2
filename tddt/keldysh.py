@@ -69,7 +69,7 @@ def contour_ordering3(*points):
 class KeldyshGF:
     """Single-particle Green's function on the Keldysh contour"""
 
-    def __init__(self, mesh: MeshProduct, target_shape):
+    def __init__(self, mesh: MeshProduct, target_shape=()):
         # The mesh must at least have two real time components
         assert len(mesh.components) >= 2
         assert isinstance(mesh.components[0], MeshReTime)
