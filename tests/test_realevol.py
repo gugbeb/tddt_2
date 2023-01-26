@@ -19,6 +19,7 @@ from tddt.realevol import (
     compute_keldysh_conn_correlator_2t,
     compute_keldysh_vertex3
 )
+from tddt.testing import assert_keldysh_gf_almost_equal
 
 
 class test_realevol(unittest.TestCase):
@@ -111,8 +112,7 @@ class test_realevol(unittest.TestCase):
                                            self.h,
                                            self.t_mesh,
                                            self.params)
-        for b0, b1 in product(Branch, Branch):
-            assert_array_almost_equal(g[b0, b1].data, g_ref[b0, b1].data)
+        assert_keldysh_gf_almost_equal(g, g_ref)
 
     def test_compute_keldysh_conn_correlator_2t(self):
         N0 = n('up', 0) + n('dn', 0)
@@ -155,9 +155,7 @@ class test_realevol(unittest.TestCase):
         rho0rho1_ref = N0N1 - KeldyshGF.from_g_l_g_g(N0_aver_N1_aver,
                                                      N1_aver_N0_aver)
 
-        for b0, b1 in product(Branch, Branch):
-            assert_array_almost_equal(rho0rho1[b0, b1].data,
-                                      rho0rho1_ref[b0, b1].data)
+        assert_keldysh_gf_almost_equal(rho0rho1, rho0rho1_ref)
 
     def test_compute_keldysh_vertex3(self):
         compute_keldysh_vertex3(('up', 0),

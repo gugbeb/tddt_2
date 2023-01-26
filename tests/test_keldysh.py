@@ -14,6 +14,7 @@ from tddt.keldysh import (Branch,
                           KeldyshGF,
                           KeldyshVertex3)
 from tddt.util import simpsons_weights
+from tddt.testing import assert_keldysh_gf_almost_equal
 
 CP = ContourPoint
 FW, BW = Branch.FORWARD, Branch.BACKWARD
@@ -262,11 +263,10 @@ class test_keldysh(unittest.TestCase):
 
     def _make_test_keldysh_gf(self, mesh, x, target_shape=()):
         g = KeldyshGF(mesh=mesh, target_shape=target_shape)
-        s = g[FW, FW].data.size
-        g[FW, FW].data[:] = x * np.arange(s).reshape(g[FW, FW].data.shape)
-        g[FW, BW].data[:] = x * np.arange(s).reshape(g[FW, BW].data.shape) + 1
-        g[BW, FW].data[:] = x * np.arange(s).reshape(g[BW, FW].data.shape) + 2
-        g[BW, BW].data[:] = x * np.arange(s).reshape(g[BW, BW].data.shape) + 3
+        for n, (b0, b1) in enumerate(product(Branch, repeat=2)):
+            g_comp = g[b0, b1]
+            s = g_comp.data.size
+            g_comp.data[:] = x * np.arange(s).reshape(g_comp.data.shape) + n
         return g
 
     def test_keldysh_gf_convolution(self):
@@ -292,8 +292,7 @@ class test_keldysh(unittest.TestCase):
                 g1[BW, FW].data[i, k] * w[k] * g2[FW, BW].data[k, j] - \
                 g1[BW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j]
 
-        for b0, b1 in product((FW, BW), repeat=2):
-            assert_array_almost_equal(conv[b0, b1].data, conv_ref[b0, b1].data)
+        assert_keldysh_gf_almost_equal(conv, conv_ref)
 
         # Matrix-valued GF
         g1 = self._make_test_keldysh_gf(self.tt_mesh, 1, (2, 2))
@@ -324,14 +323,16 @@ class test_keldysh(unittest.TestCase):
                 g1[BW, BW].data[i, k, m, l] * w[k] * \
                 g2[BW, BW].data[k, j, l, n]
 
-        for b0, b1 in product((FW, BW), repeat=2):
-            assert_array_almost_equal(conv[b0, b1].data, conv_ref[b0, b1].data)
+        assert_keldysh_gf_almost_equal(conv, conv_ref)
 
+    def test_keldysh_gf_convolution_bz(self):
         # Square lattice
         bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])
         n_k = 4
         bz_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k)
         ttk_mesh = MeshProduct(*self.tt_mesh.components, bz_mesh)
+
+        w = simpsons_weights(self.t_mesh)
 
         # Scalar-valued GF with an extra k-mesh component
         g1 = self._make_test_keldysh_gf(ttk_mesh, 1)
@@ -353,8 +354,7 @@ class test_keldysh(unittest.TestCase):
                 g1[BW, FW].data[i, k, K] * w[k] * g2[FW, BW].data[k, j, K] - \
                 g1[BW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K]
 
-        for b0, b1 in product((FW, BW), repeat=2):
-            assert_array_almost_equal(conv[b0, b1].data, conv_ref[b0, b1].data)
+        assert_keldysh_gf_almost_equal(conv, conv_ref)
 
         # Matrix-valued GF with an extra k-mesh component
         g1 = self._make_test_keldysh_gf(ttk_mesh, 1, (2, 2))
@@ -386,8 +386,7 @@ class test_keldysh(unittest.TestCase):
                 g1[BW, BW].data[i, k, K, m, l] * w[k] * \
                 g2[BW, BW].data[k, j, K, l, n]
 
-        for b0, b1 in product((FW, BW), repeat=2):
-            assert_array_almost_equal(conv[b0, b1].data, conv_ref[b0, b1].data)
+        assert_keldysh_gf_almost_equal(conv, conv_ref)
 
     def test_keldysh_vertex3(self):
 
