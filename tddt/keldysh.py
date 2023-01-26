@@ -256,7 +256,7 @@ class KeldyshGF:
 class KeldyshVertex3:
     """Three-point vertex function <c c^+ \\rho> on the Keldysh contour"""
 
-    def __init__(self, mesh: MeshProduct, target_shape):
+    def __init__(self, mesh: MeshProduct, target_shape=()):
         # The mesh must at least have three real time components
         assert len(mesh.components) >= 3
         assert isinstance(mesh.components[0], MeshReTime)
