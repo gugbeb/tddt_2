@@ -160,3 +160,65 @@ def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
         raise RuntimeError("Unknown leg specification")
 
     return res
+
+
+def polarization_2nd_order(Lambda: KeldyshVertex3, g: KeldyshGF):
+    r"""
+    2nd order contribution to the polarization function.
+
+    Lambda - 3-point vertex.
+    g - fermionic line
+    """
+
+    # f(z_0, z_1, z_2) = \int_C d\bar z \Lambda(z_0, \bar z, z_2) g(\bar z, z_1)
+    f = vertex3_attach_leg(Lambda, g, VertexLeg.INBOUND)
+
+    # Evaluate \Pi(z_0, z_1) = \int_C d\bar z_0 \int_C d\bar z_1
+    # f(\bar z_0, \bar z_1, z_0) f(\bar z_1, \bar z_0, z_1)
+
+    # Non-time components of the mesh
+    non_t_mesh_comps = f.mesh.components[3:] + f.mesh.components[3:]
+
+    non_t_mesh_subscripts = ascii_lowercase[:len(non_t_mesh_comps)]
+    assert non_t_mesh_subscripts == '' or non_t_mesh_subscripts[-1] < 'i'
+    subscripts_res = "ij" + non_t_mesh_subscripts
+
+    # Subscripts: Non-time components of f's mesh
+    n_non_t_mesh_comps_f = len(f.mesh.components[3:])
+    non_t_mesh_subscripts_f1, non_t_mesh_subscripts_f2 = \
+        non_t_mesh_subscripts[:n_non_t_mesh_comps_f], \
+        non_t_mesh_subscripts[n_non_t_mesh_comps_f:]
+
+    subscripts_f1 = "kli" + non_t_mesh_subscripts_f1
+    subscripts_f2 = "lkj" + non_t_mesh_subscripts_f2
+
+    # Either f is scalar-valued or 3-tensor-valued
+    assert len(f.target_shape) == 0 or len(f.target_shape) == 3
+
+    if f.target_shape == ():
+        res_target_shape = ()
+    else:
+        res_target_shape = (f.target_shape[2], f.target_shape[2])
+        subscripts_f1 += "uwx"
+        subscripts_f2 += "wuy"
+        subscripts_res += "xy"
+
+    subscripts = f"{subscripts_f1},k,l,{subscripts_f2}->{subscripts_res}"
+
+    assert f.time_mesh.components[0] == f.time_mesh.components[1]
+    res_mesh = MeshProduct(f.time_mesh.components[2],
+                           f.time_mesh.components[2],
+                           *non_t_mesh_comps)
+
+    res = KeldyshGF(mesh=res_mesh, target_shape=res_target_shape)
+
+    FW, BW = Branch.FORWARD, Branch.BACKWARD
+    w = simpsons_weights(f.time_mesh.components[0])
+    for b0, b1 in product(Branch, repeat=2):
+        res[b0, b1].data[:] = \
+            einsum(subscripts, f[FW, FW, b0].data, w, w, f[FW, FW, b1].data) -\
+            einsum(subscripts, f[FW, BW, b0].data, w, w, f[BW, FW, b1].data) -\
+            einsum(subscripts, f[BW, FW, b0].data, w, w, f[FW, BW, b1].data) +\
+            einsum(subscripts, f[BW, BW, b0].data, w, w, f[BW, BW, b1].data)
+
+    return res

@@ -6,9 +6,10 @@ from triqs.gf import MeshReTime, MeshProduct, MeshBrillouinZone
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF, KeldyshVertex3
-from tddt.diagrams import VertexLeg, vertex3_attach_leg
+from tddt.diagrams import VertexLeg, vertex3_attach_leg, polarization_2nd_order
 from tddt.util import simpsons_weights
-from tddt.testing import assert_keldysh_vertex3_almost_equal
+from tddt.testing import (assert_keldysh_gf_almost_equal,
+                          assert_keldysh_vertex3_almost_equal)
 
 FW, BW = Branch.FORWARD, Branch.BACKWARD
 
@@ -413,3 +414,50 @@ class test_diagrams(unittest.TestCase):
                     Lambda[b0, b1, BW].data[i, j, l, K1, x, y, w] * self.W[l] *\
                     g[BW, b2].data[l, k, K2, w, z]
         assert_keldysh_vertex3_almost_equal(f, f_ref)
+
+    def test_polarization_2nd_order_scalar(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
+        g = self._make_test_keldysh_gf(g_mesh, 1.0)
+
+        pi = polarization_2nd_order(Lambda, g)
+
+        pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1], self.t_mesh[1]))
+        W = simpsons_weights(self.t_mesh[0])
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n in product(*[self.t_ranges[1]] * 2,
+                                            *[self.t_ranges[0]] * 4):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                pi_ref[b0, b1].data[i, j] += sign *\
+                    Lambda[b2, b3, b0].data[k, l, i] * g[b5, b2].data[n, k] *\
+                    W[k] * W[l] * W[m] * W[n] *\
+                    g[b3, b4].data[l, m] * Lambda[b4, b5, b1].data[m, n, j]
+
+        assert_keldysh_gf_almost_equal(pi, pi_ref)
+
+    def test_polarization_2nd_order_scalar_bz(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
+        g = self._make_test_keldysh_gf(g_mesh, 1.0)
+
+        pi = polarization_2nd_order(Lambda, g)
+
+        pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
+                                            self.t_mesh[1],
+                                            *[self.bz_mesh] * 2))
+        W = simpsons_weights(self.t_mesh[0])
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n, K1, K2 in product(*[self.t_ranges[1]] * 2,
+                                                    *[self.t_ranges[0]] * 4,
+                                                    *[range(self.n_k)] * 2):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                pi_ref[b0, b1].data[i, j, K1, K2] += sign *\
+                    Lambda[b2, b3, b0].data[k, l, i] *\
+                    g[b5, b2].data[n, k, K1] *\
+                    W[k] * W[l] * W[m] * W[n] *\
+                    g[b3, b4].data[l, m, K2] *\
+                    Lambda[b4, b5, b1].data[m, n, j]
+
+        assert_keldysh_gf_almost_equal(pi, pi_ref)
