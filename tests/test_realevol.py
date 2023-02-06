@@ -66,7 +66,7 @@ class test_realevol(unittest.TestCase):
         cls.params['lanczos_min_matrix_size'] = 10000
 
     def test_compute_keldysh_gf(self):
-        gf_struct = [('up', [0, 1]), ('dn', [0, 1])]
+        gf_struct = [('up', 2), ('dn', 2)]
         gf = compute_keldysh_gf(gf_struct,
                                 self.init_state,
                                 self.h,
