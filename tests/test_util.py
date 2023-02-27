@@ -10,7 +10,7 @@ from tddt.util import simpsons_weights
 class test_util(unittest.TestCase):
     """Utility functions"""
 
-    def test_simpsons_weights2(self):
+    def test_simpsons_weights(self):
         mesh = MeshReTime(1.0, 3.0, 11)
         w = simpsons_weights(mesh)
         w_ref = 0.2 * np.array([1, 4, 2, 4, 2, 4, 2, 4, 2, 4, 1]) / 3
