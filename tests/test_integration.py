@@ -4,11 +4,11 @@ from numpy.testing import assert_array_almost_equal
 
 from triqs.gf import MeshReTime
 
-from tddt.util import simpsons_weights
+from tddt.integration import simpsons_weights
 
 
-class test_util(unittest.TestCase):
-    """Utility functions"""
+class test_integration(unittest.TestCase):
+    """Integration tools"""
 
     def test_simpsons_weights(self):
         mesh = MeshReTime(1.0, 3.0, 11)

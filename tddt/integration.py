@@ -1,5 +1,5 @@
 #
-# Utility functions
+# Numerical integration tools
 #
 
 from numpy import ones

@@ -7,7 +7,7 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF, KeldyshVertex3
 from tddt.diagrams import VertexLeg, vertex3_attach_leg, polarization_2nd_order
-from tddt.util import simpsons_weights
+from tddt.integration import simpsons_weights
 from tddt.testing import (assert_keldysh_gf_almost_equal,
                           assert_keldysh_vertex3_almost_equal)
 

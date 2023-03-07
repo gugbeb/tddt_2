@@ -9,7 +9,7 @@ from typing import Tuple, Dict
 from numpy import einsum
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
-from .util import simpsons_weights
+from .integration import simpsons_weights
 
 
 class Branch(Enum):

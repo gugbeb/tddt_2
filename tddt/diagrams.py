@@ -10,7 +10,7 @@ from numpy import einsum
 from triqs.gf import MeshProduct
 
 from .keldysh import Branch, KeldyshGF, KeldyshVertex3
-from .util import simpsons_weights
+from .integration import simpsons_weights
 
 
 class VertexLeg(Enum):

@@ -13,7 +13,7 @@ from tddt.keldysh import (Branch,
                           contour_ordering3,
                           KeldyshGF,
                           KeldyshVertex3)
-from tddt.util import simpsons_weights
+from tddt.integration import simpsons_weights
 from tddt.testing import assert_keldysh_gf_almost_equal
 
 CP = ContourPoint
