@@ -7,7 +7,7 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF, KeldyshVertex3
 from tddt.diagrams import VertexLeg, vertex3_attach_leg, polarization_2nd_order
-from tddt.integration import simpsons_weights
+from tddt.integration import GregoryIntegrator
 from tddt.testing import (assert_keldysh_gf_almost_equal,
                           assert_keldysh_vertex3_almost_equal)
 
@@ -31,7 +31,7 @@ class test_diagrams(unittest.TestCase):
         cls.bz_mesh = MeshBrillouinZone(BrillouinZone(bl), cls.n_k)
 
         # Simpson’s rule weights
-        cls.W = simpsons_weights(cls.t_mesh[3])
+        cls.W = GregoryIntegrator(5).weights_conv(cls.t_mesh[3])
 
     def _make_test_keldysh_gf(self, mesh, x, target_shape=()):
         g = KeldyshGF(mesh=mesh, target_shape=target_shape)
@@ -421,10 +421,11 @@ class test_diagrams(unittest.TestCase):
         g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
         g = self._make_test_keldysh_gf(g_mesh, 1.0)
 
-        pi = polarization_2nd_order(Lambda, g)
+        W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+
+        pi = polarization_2nd_order(Lambda, g, quadrature_order=2)
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1], self.t_mesh[1]))
-        W = simpsons_weights(self.t_mesh[0])
         for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
             for i, j, k, l, m, n in product(*[self.t_ranges[1]] * 2,
                                             *[self.t_ranges[0]] * 4):
@@ -442,12 +443,13 @@ class test_diagrams(unittest.TestCase):
         g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
         g = self._make_test_keldysh_gf(g_mesh, 1.0)
 
-        pi = polarization_2nd_order(Lambda, g)
+        W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+
+        pi = polarization_2nd_order(Lambda, g, quadrature_order=2)
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
                                             self.t_mesh[1],
                                             *[self.bz_mesh] * 2))
-        W = simpsons_weights(self.t_mesh[0])
         for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
             for i, j, k, l, m, n, K1, K2 in product(*[self.t_ranges[1]] * 2,
                                                     *[self.t_ranges[0]] * 4,

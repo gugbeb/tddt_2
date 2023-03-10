@@ -10,7 +10,7 @@ from numpy import einsum
 from triqs.gf import MeshProduct
 
 from .keldysh import Branch, KeldyshGF, KeldyshVertex3
-from .integration import simpsons_weights
+from .integration import GregoryIntegrator
 
 
 class VertexLeg(Enum):
@@ -20,7 +20,10 @@ class VertexLeg(Enum):
     BOSON = 2
 
 
-def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
+def vertex3_attach_leg(Lambda: KeldyshVertex3,
+                       g: KeldyshGF,
+                       leg: VertexLeg,
+                       quadrature_order=5):
     r"""
     Compute one of the following contour convolutions of a 3-point vertex
     \Lambda(z_0, z_1, z_2) and a fermionic/bosonic single-particle function
@@ -37,6 +40,9 @@ def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
     leg = VertexLeg.BOSON
     ---------------------
     f(z_0, z_1, z_2) = \int_C d\bar z \Lambda(z_0, z_1, \bar z) g(\bar z, z_2)
+
+    Parameter 'quadrature_order' controls the order of a quadrature rule used
+    to do the real time integrals.
     """
 
     # Non-time components of the mesh
@@ -69,6 +75,8 @@ def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
     assert (len(Lambda.target_shape) == 0 and len(g.target_shape) == 0) or \
            (len(Lambda.target_shape) == 3 and len(g.target_shape) == 2)
 
+    integrator = GregoryIntegrator(quadrature_order)
+
     if leg == VertexLeg.INBOUND:
         assert Lambda.time_mesh.components[1] == g.time_mesh.components[0]
         res_mesh = MeshProduct(Lambda.time_mesh.components[0],
@@ -93,7 +101,7 @@ def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
 
         res = KeldyshVertex3(mesh=res_mesh, target_shape=res_target_shape)
 
-        w = simpsons_weights(Lambda.time_mesh.components[1])
+        w = integrator.weights_conv(Lambda.time_mesh.components[1])
         for b0, b1, b2 in product(Branch, repeat=3):
             res[b0, b1, b2].data[:] = \
                 einsum(subscripts, Lambda[b0, FW, b2].data, w, g[FW, b1].data) \
@@ -122,7 +130,7 @@ def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
 
         res = KeldyshVertex3(mesh=res_mesh, target_shape=res_target_shape)
 
-        w = simpsons_weights(Lambda.time_mesh.components[0])
+        w = integrator.weights_conv(Lambda.time_mesh.components[0])
         for b0, b1, b2 in product(Branch, repeat=3):
             res[b0, b1, b2].data[:] = \
                 einsum(subscripts, Lambda[FW, b1, b2].data, w, g[b0, FW].data) \
@@ -151,7 +159,7 @@ def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
 
         res = KeldyshVertex3(mesh=res_mesh, target_shape=res_target_shape)
 
-        w = simpsons_weights(Lambda.time_mesh.components[2])
+        w = integrator.weights_conv(Lambda.time_mesh.components[2])
         for b0, b1, b2 in product(Branch, repeat=3):
             res[b0, b1, b2].data[:] = \
                 einsum(subscripts, Lambda[b0, b1, FW].data, w, g[FW, b2].data) \
@@ -162,16 +170,24 @@ def vertex3_attach_leg(Lambda: KeldyshVertex3, g: KeldyshGF, leg: VertexLeg):
     return res
 
 
-def polarization_2nd_order(Lambda: KeldyshVertex3, g: KeldyshGF):
+def polarization_2nd_order(Lambda: KeldyshVertex3,
+                           g: KeldyshGF,
+                           quadrature_order=5):
     r"""
     2nd order contribution to the polarization function.
 
     Lambda - 3-point vertex.
     g - fermionic line
+
+    Parameter 'quadrature_order' controls the order of a quadrature rule used
+    to do the real time integrals.
     """
 
     # f(z_0, z_1, z_2) = \int_C d\bar z \Lambda(z_0, \bar z, z_2) g(\bar z, z_1)
-    f = vertex3_attach_leg(Lambda, g, VertexLeg.INBOUND)
+    f = vertex3_attach_leg(Lambda,
+                           g,
+                           VertexLeg.INBOUND,
+                           quadrature_order=quadrature_order)
 
     # Evaluate \Pi(z_0, z_1) = \int_C d\bar z_0 \int_C d\bar z_1
     # f(\bar z_0, \bar z_1, z_0) f(\bar z_1, \bar z_0, z_1)
@@ -212,8 +228,9 @@ def polarization_2nd_order(Lambda: KeldyshVertex3, g: KeldyshGF):
 
     res = KeldyshGF(mesh=res_mesh, target_shape=res_target_shape)
 
+    integrator = GregoryIntegrator(quadrature_order)
+    w = integrator.weights_conv(f.time_mesh.components[0])
     FW, BW = Branch.FORWARD, Branch.BACKWARD
-    w = simpsons_weights(f.time_mesh.components[0])
     for b0, b1 in product(Branch, repeat=2):
         res[b0, b1].data[:] = \
             einsum(subscripts, f[FW, FW, b0].data, w, w, f[FW, FW, b1].data) -\

@@ -9,7 +9,7 @@ from typing import Tuple, Dict
 from numpy import einsum
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
-from .integration import simpsons_weights
+from .integration import GregoryIntegrator
 
 
 class Branch(Enum):
@@ -69,16 +69,14 @@ def contour_ordering3(*points):
 class KeldyshGF:
     """Single-particle Green's function on the Keldysh contour"""
 
+    """Integrator object for contour convolutions"""
+    integrator = GregoryIntegrator(5)
+
     def __init__(self, mesh: MeshProduct, target_shape=()):
         # The mesh must at least have two real time components
         assert len(mesh.components) >= 2
         assert isinstance(mesh.components[0], MeshReTime)
         assert isinstance(mesh.components[1], MeshReTime)
-
-        # The following precondition is relied upon by __matmul__()
-        assert len(mesh.components[0]) % 2 == 1 and \
-               len(mesh.components[1]) % 2 == 1, \
-               "Time grid must have an odd number of nodes"
 
         self.mesh = mesh
         self.time_mesh = MeshProduct(mesh.components[0], mesh.components[1])
@@ -209,8 +207,12 @@ class KeldyshGF:
     def __matmul__(self, other):
         """Contour convolution"""
         assert self.mesh == other.mesh
-        # Weights for Simpson’s rule
-        w = simpsons_weights(self.mesh.components[0])
+
+        # Weights for quadrature rule
+        min_mesh_size = self.integrator.order + 1
+        assert len(self.mesh.components[1]) >= min_mesh_size, \
+               "Time grid must have at least %d nodes" % min_mesh_size
+        w = self.integrator.weights_conv(self.mesh.components[1])
 
         res = deepcopy(self)
 
@@ -255,6 +257,9 @@ class KeldyshGF:
 
 class KeldyshVertex3:
     """Three-point vertex function <c c^+ \\rho> on the Keldysh contour"""
+
+    """Integrator object for contour convolutions"""
+    integrator = GregoryIntegrator(5)
 
     def __init__(self, mesh: MeshProduct, target_shape=()):
         # The mesh must at least have three real time components
