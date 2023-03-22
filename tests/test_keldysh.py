@@ -181,6 +181,23 @@ class test_keldysh(unittest.TestCase):
         g22 = g[Branch.BACKWARD, Branch.BACKWARD]
         assert_array_almost_equal((g11 + g22).data, (g12 + g21).data)
 
+        # Greater component
+        assert_array_equal(g.greater().data, g21.data)
+        # Lesser component
+        assert_array_equal(g.lesser().data, g12.data)
+        # Retarded component
+        g_ret = g.ret()
+        for p in g_ret.mesh:
+            t0, t1 = p[0], p[1]
+            ref = g21[p] - g12[p] if t0.linear_index >= t1.linear_index else 0
+            assert_array_equal(g_ret[p], ref)
+        # Advanced component
+        g_adv = g.adv()
+        for p in g_adv.mesh:
+            t0, t1 = p[0], p[1]
+            ref = g12[p] - g21[p] if t0.linear_index <= t1.linear_index else 0
+            assert_array_equal(g_adv[p], ref)
+
         non_t_shape = tuple(len(m) for m in g.mesh.components[2:]) \
             + g.target_shape
 

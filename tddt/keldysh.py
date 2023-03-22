@@ -6,7 +6,7 @@ from enum import Enum
 from copy import deepcopy
 from itertools import product
 from typing import Tuple, Dict
-from numpy import einsum
+from numpy import einsum, tril_indices, triu_indices
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
 from .integration import GregoryIntegrator
@@ -155,6 +155,32 @@ class KeldyshGF:
               + (slice(None),) * n_non_t_mesh_comp] = value
         else:
             raise IndexError("Unrecognized index format")
+
+    #
+    # Extract components
+    #
+
+    def greater(self):
+        return self[Branch.BACKWARD, Branch.FORWARD]
+
+    def lesser(self):
+        return self[Branch.FORWARD, Branch.BACKWARD]
+
+    def ret(self):
+        g_g = self[Branch.BACKWARD, Branch.FORWARD]
+        g_l = self[Branch.FORWARD, Branch.BACKWARD]
+        g_ret = Gf(mesh=self.mesh, target_shape=self.target_shape)
+        tril_idx = tril_indices(len(self.time_mesh.components[0]))
+        g_ret.data[tril_idx] = g_g.data[tril_idx] - g_l.data[tril_idx]
+        return g_ret
+
+    def adv(self):
+        g_g = self[Branch.BACKWARD, Branch.FORWARD]
+        g_l = self[Branch.FORWARD, Branch.BACKWARD]
+        g_adv = Gf(mesh=self.mesh, target_shape=self.target_shape)
+        triu_idx = triu_indices(len(self.time_mesh.components[0]))
+        g_adv.data[triu_idx] = g_l.data[triu_idx] - g_g.data[triu_idx]
+        return g_adv
 
     #
     # Arithmetics
