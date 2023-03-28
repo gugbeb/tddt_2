@@ -26,7 +26,6 @@ class VIE2Solver:
         self.N = len(mesh)
         assert self.N >= gregory_order + 1
 
-        self.dt = mesh.delta
         self.solution_shape = solution_shape
 
         self.integrator = GregoryIntegrator(gregory_order)
@@ -58,12 +57,12 @@ class VIE2Solver:
         self.startup_mat = np.eye(s_size).reshape(self.startup_mat.shape)
         for n, l in product(range(1, order + 1), repeat=2):
             self.startup_mat[(n - 1, *sol_slice, l - 1, *sol_slice)] += \
-                self.dt * self.w[n, l] * k[n, l, ...]
+                self.w[n, l] * k[n, l, ...]
 
         self.startup_rhs[:, ...] = q[1:(order + 1), ...]
         for n in range(1, order + 1):
             self.startup_rhs[n - 1, ...] -= \
-                self.dt * self.w[n, 0] * \
+                self.w[n, 0] * \
                 np.tensordot(k[n, 0, ...], self.y[0, ...], axes=self.y.ndim - 1)
 
         self.y[1:(order + 1), ...] = \
@@ -73,11 +72,11 @@ class VIE2Solver:
         size = int(np.prod(self.solution_shape))
 
         self.stepping_mat = np.eye(size).reshape(self.stepping_mat.shape)
-        self.stepping_mat += self.dt * self.w[n, n] * k[n, n, ...]
+        self.stepping_mat += self.w[n, n] * k[n, n, ...]
 
         self.stepping_rhs = q[n, ...]
         for l in range(n):  # noqa: E741
-            self.stepping_rhs -= self.dt * self.w[n, l] \
+            self.stepping_rhs -= self.w[n, l] \
                 * np.tensordot(k[n, l, ...], self.y[l, ...],
                                axes=self.y.ndim - 1)
 

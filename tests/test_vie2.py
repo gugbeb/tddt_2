@@ -17,7 +17,6 @@ class test_vie2(unittest.TestCase):
 
         solver = VIE2Solver(mesh, ())
         self.assertEqual(solver.N, 501)
-        self.assertEqual(solver.dt, 0.01)
         self.assertEqual(solver.solution_shape, ())
         self.assertEqual(solver.y_shape, (501,))
         self.assertEqual(solver.k_shape, (501, 501,))
@@ -39,7 +38,6 @@ class test_vie2(unittest.TestCase):
 
         solver = VIE2Solver(mesh, (3,))
         self.assertEqual(solver.N, 501)
-        self.assertEqual(solver.dt, 0.01)
         self.assertEqual(solver.solution_shape, (3,))
         self.assertEqual(solver.y_shape, (501, 3))
         self.assertEqual(solver.k_shape, (501, 501, 3, 3))
@@ -77,7 +75,6 @@ class test_vie2(unittest.TestCase):
 
         solver = VIE2Solver(mesh, (3, 2))
         self.assertEqual(solver.N, 501)
-        self.assertEqual(solver.dt, 0.01)
         self.assertEqual(solver.solution_shape, (3, 2))
         self.assertEqual(solver.y_shape, (501, 3, 2))
         self.assertEqual(solver.k_shape, (501, 501, 3, 2, 3, 2))

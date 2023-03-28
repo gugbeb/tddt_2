@@ -39,7 +39,7 @@ class test_integration(unittest.TestCase):
                 b_lr[i, j] = omega[i - j] if (i - j <= b_size - 1) else 1
 
         return np.block([[s_ref, np.zeros((b_size, size - b_size))],
-                         [b_ll, b_lr]])
+                         [b_ll, b_lr]]) * self.mesh.delta
 
     def test_GregoryIntegrator0(self):
         g = GregoryIntegrator(0)
@@ -180,14 +180,17 @@ class test_integration(unittest.TestCase):
         g = GregoryIntegrator(2)
 
         mesh_min = MeshReTime(1.0, 2.0, 3)
-        assert_array_almost_equal(g.weights(mesh_min), g.s)
-        assert_array_almost_equal(g.weights_conv(mesh_min), g.s[-1, :])
+        assert_array_almost_equal(g.weights(mesh_min),
+                                  mesh_min.delta * g.s)
+        assert_array_almost_equal(g.weights_conv(mesh_min),
+                                  mesh_min.delta * g.s[-1, :])
 
         mesh_min_plus = MeshReTime(1.0, 2.0, 4)
         w_ref = np.array([[0, 0, 0, 0],
                           [5 / 12, 2 / 3, -1 / 12, 0],
                           [1 / 3, 4 / 3, 1 / 3, 0],
                           [3 / 8, 9 / 8, 9 / 8, 3 / 8]])
+        w_ref *= mesh_min_plus.delta
         assert_array_almost_equal(g.weights(mesh_min_plus), w_ref)
         assert_array_almost_equal(g.weights_conv(mesh_min_plus), w_ref[-1, :])
 
@@ -195,9 +198,9 @@ class test_integration(unittest.TestCase):
         w_ref = np.array([[0, 0, 0, 0, 0, 0],
                           [5 / 12, 2 / 3, -1 / 12, 0, 0, 0],
                           [1 / 3, 4 / 3, 1 / 3, 0, 0, 0],
-
                           [3 / 8, 9 / 8, 9 / 8, 3 / 8, 0, 0],
                           [3 / 8, 7 / 6, 11 / 12, 7 / 6, 3 / 8, 0],
                           [3 / 8, 7 / 6, 23 / 24, 23 / 24, 7 / 6, 3 / 8]])
+        w_ref *= mesh_min2.delta
         assert_array_almost_equal(g.weights(mesh_min2), w_ref)
         assert_array_almost_equal(g.weights_conv(mesh_min2), w_ref[-1, :])

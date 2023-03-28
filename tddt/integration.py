@@ -112,6 +112,7 @@ class GregoryIntegrator:
         # Patch in the starting block
         w[:stencil_size, :stencil_size] = self.s
 
+        w *= mesh.delta
         return w
 
     def weights_conv(self, mesh: MeshReTime):
@@ -123,7 +124,7 @@ class GregoryIntegrator:
         assert n >= stencil_size
 
         if n == stencil_size:
-            return self.s[-1, :]
+            return mesh.delta * self.s[-1, :]
 
         # The Trapezoid rule contribution
         w = np.ones(n)
@@ -134,4 +135,5 @@ class GregoryIntegrator:
             w[:stencil_size] += self.B
             w[-stencil_size:] += np.flip(self.B)
 
+        w *= mesh.delta
         return w

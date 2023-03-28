@@ -288,6 +288,7 @@ class test_keldysh(unittest.TestCase):
 
     def test_keldysh_gf_convolution(self):
         w = simpsons_weights(self.t_mesh)
+        dt = self.t_mesh.delta
 
         # Scalar-valued GF
         g1 = self._make_test_keldysh_gf(self.tt_mesh, 1)
@@ -298,16 +299,16 @@ class test_keldysh(unittest.TestCase):
         for i, k, j in product(range(self.n_t), repeat=3):
             conv_ref[FW, FW].data[i, j] += \
                 g1[FW, FW].data[i, k] * w[k] * g2[FW, FW].data[k, j] - \
-                g1[FW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j]
+                g1[FW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j] * dt
             conv_ref[FW, BW].data[i, j] += \
                 g1[FW, FW].data[i, k] * w[k] * g2[FW, BW].data[k, j] - \
-                g1[FW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j]
+                g1[FW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j] * dt
             conv_ref[BW, FW].data[i, j] += \
                 g1[BW, FW].data[i, k] * w[k] * g2[FW, FW].data[k, j] - \
-                g1[BW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j]
+                g1[BW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j] * dt
             conv_ref[BW, BW].data[i, j] += \
                 g1[BW, FW].data[i, k] * w[k] * g2[FW, BW].data[k, j] - \
-                g1[BW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j]
+                g1[BW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j] * dt
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
@@ -323,22 +324,22 @@ class test_keldysh(unittest.TestCase):
                 g1[FW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, l, n] - \
                 g1[FW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, l, n]
+                g2[BW, FW].data[k, j, l, n] * dt
             conv_ref[FW, BW].data[i, j, m, n] += \
                 g1[FW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, l, n] - \
                 g1[FW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, l, n]
+                g2[BW, BW].data[k, j, l, n] * dt
             conv_ref[BW, FW].data[i, j, m, n] += \
                 g1[BW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, l, n] - \
                 g1[BW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, l, n]
+                g2[BW, FW].data[k, j, l, n] * dt
             conv_ref[BW, BW].data[i, j, m, n] += \
                 g1[BW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, l, n] - \
                 g1[BW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, l, n]
+                g2[BW, BW].data[k, j, l, n] * dt
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
@@ -350,6 +351,7 @@ class test_keldysh(unittest.TestCase):
         ttk_mesh = MeshProduct(*self.tt_mesh.components, bz_mesh)
 
         w = simpsons_weights(self.t_mesh)
+        dt = self.t_mesh.delta
 
         # Scalar-valued GF with an extra k-mesh component
         g1 = self._make_test_keldysh_gf(ttk_mesh, 1)
@@ -360,16 +362,16 @@ class test_keldysh(unittest.TestCase):
         for i, k, j, K in product(*[range(self.n_t)] * 3, range(len(bz_mesh))):
             conv_ref[FW, FW].data[i, j, K] += \
                 g1[FW, FW].data[i, k, K] * w[k] * g2[FW, FW].data[k, j, K] - \
-                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K]
+                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K] * dt
             conv_ref[FW, BW].data[i, j, K] += \
                 g1[FW, FW].data[i, k, K] * w[k] * g2[FW, BW].data[k, j, K] - \
-                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K]
+                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K] * dt
             conv_ref[BW, FW].data[i, j, K] += \
                 g1[BW, FW].data[i, k, K] * w[k] * g2[FW, FW].data[k, j, K] - \
-                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K]
+                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K] * dt
             conv_ref[BW, BW].data[i, j, K] += \
                 g1[BW, FW].data[i, k, K] * w[k] * g2[FW, BW].data[k, j, K] - \
-                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K]
+                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K] * dt
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
@@ -386,22 +388,22 @@ class test_keldysh(unittest.TestCase):
                 g1[FW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, K, l, n] - \
                 g1[FW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, K, l, n]
+                g2[BW, FW].data[k, j, K, l, n] * dt
             conv_ref[FW, BW].data[i, j, K, m, n] += \
                 g1[FW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, K, l, n] - \
                 g1[FW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, K, l, n]
+                g2[BW, BW].data[k, j, K, l, n] * dt
             conv_ref[BW, FW].data[i, j, K, m, n] += \
                 g1[BW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, K, l, n] - \
                 g1[BW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, K, l, n]
+                g2[BW, FW].data[k, j, K, l, n] * dt
             conv_ref[BW, BW].data[i, j, K, m, n] += \
                 g1[BW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, K, l, n] - \
                 g1[BW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, K, l, n]
+                g2[BW, BW].data[k, j, K, l, n] * dt
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
