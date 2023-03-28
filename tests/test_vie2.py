@@ -116,3 +116,7 @@ class test_vie2(unittest.TestCase):
         ])
         y_ref = np.moveaxis(y_ref, -1, 0)  # Move time axis to the front
         assert_array_almost_equal(y, y_ref, decimal=10)
+
+
+if __name__ == '__main__':
+    unittest.main()

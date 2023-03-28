@@ -204,3 +204,7 @@ class test_integration(unittest.TestCase):
         w_ref *= mesh_min2.delta
         assert_array_almost_equal(g.weights(mesh_min2), w_ref)
         assert_array_almost_equal(g.weights_conv(mesh_min2), w_ref[-1, :])
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -463,3 +463,7 @@ class test_diagrams(unittest.TestCase):
                     Lambda[b4, b5, b1].data[m, n, j]
 
         assert_keldysh_gf_almost_equal(pi, pi_ref)
+
+
+if __name__ == '__main__':
+    unittest.main()
