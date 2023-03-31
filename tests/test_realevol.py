@@ -11,7 +11,7 @@ from realevol.operators_tinterp import c, c_dag, n
 from realevol.init_state import make_equilibrium_init_state
 from realevol.realevol import compute_expectval
 
-from tddt.keldysh import Branch, KeldyshGF
+from tddt.keldysh import Branch, KeldyshGF, from_lesser_greater
 from tddt.realevol import (
     compute_keldysh_gf,
     compute_keldysh_gf_element,
@@ -83,8 +83,9 @@ class test_realevol(unittest.TestCase):
                                            self.t_mesh,
                                            self.params)
         # Iteration over Keldysh components
-        for g, g_el in zip(gf['dn'].data, gf_el.data):
-            assert_array_almost_equal(g.mesh, g_el.mesh)
+        for g, g_el in zip(gf['dn'].components.reshape(4),
+                           gf_el.components.reshape(4)):
+            self.assertEqual(g.mesh, g_el.mesh)
             assert_array_almost_equal(g[0, 1].data, g_el.data)
 
     def test_compute_keldysh_correlator_2t(self):
@@ -152,8 +153,8 @@ class test_realevol(unittest.TestCase):
             N1_aver_N0_aver[t2, t1] = N0_aver[t1] * N1_aver[t2]
         N1_aver_N0_aver.data[:] = np.transpose(N1_aver_N0_aver.data)
 
-        rho0rho1_ref = N0N1 - KeldyshGF.from_g_l_g_g(N0_aver_N1_aver,
-                                                     N1_aver_N0_aver)
+        rho0rho1_ref = N0N1 - from_lesser_greater(N0_aver_N1_aver,
+                                                  N1_aver_N0_aver)
 
         assert_keldysh_gf_almost_equal(rho0rho1, rho0rho1_ref)
 

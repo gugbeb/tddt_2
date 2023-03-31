@@ -4,9 +4,9 @@
 
 from enum import Enum
 from copy import deepcopy
-from itertools import product
-from typing import Tuple, Dict
-from numpy import einsum, tril_indices, triu_indices
+from itertools import product, takewhile
+from typing import Tuple, Dict, Union
+from numpy import array, tril_indices, triu_indices
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
 from .integration import GregoryIntegrator
@@ -30,8 +30,7 @@ class ContourPoint:
 
     def __lt__(self, other):
         """
-        This function defines the comparison rule used by `contour_ordering2()`
-        and `contour_ordering3()`.
+        This function defines the comparison rule used by `contour_ordering()`.
         """
         if self.branch == other.branch:
             if self.branch == Branch.FORWARD:
@@ -42,167 +41,144 @@ class ContourPoint:
             return self.branch.value < other.branch.value
 
 
-def contour_ordering2(*points):
+def contour_ordering(*points):
     """
-    Contour ordering of two points
+    Contour ordering of a list of points
 
-    Takes two contour points and returns a permutation of integers (0, 1)
-    describing the order of the points on the contour. A pair of coinciding
-    points on the forward branch comes in the original order in the output
-    permutation, while for the backward branch the order is reversed.
+    Takes a list of N contour points and returns a permutation of integers
+    (0, 1, N-1) describing the order of the points on the contour. A pair of
+    coinciding points on the forward branch comes in the original order in the
+    output permutation, while for the backward branch the order is reversed.
     """
-    return tuple(sorted((0, 1), key=lambda n: points[n], reverse=True))
-
-
-def contour_ordering3(*points):
-    """
-    Contour ordering of three points
-
-    Takes three contour points and returns a permutation of integers (0, 1, 2)
-    describing the order of the points on the contour. A pair of coinciding
-    points on the forward branch comes in the original order in the output
-    permutation, while for the backward branch the order is reversed.
-    """
-    return tuple(sorted((0, 1, 2), key=lambda n: points[n], reverse=True))
+    return tuple(sorted(range(len(points)),
+                        key=lambda n: points[n],
+                        reverse=True))
 
 
 class KeldyshGF:
-    """Single-particle Green's function on the Keldysh contour"""
+    """Generic N-point Green's function defined on a 2-branch Keldysh contour"""
 
     """Integrator object for contour convolutions"""
     integrator = GregoryIntegrator(5)
 
-    def __init__(self, mesh: MeshProduct, target_shape=()):
-        # The mesh must at least have two real time components
-        assert len(mesh.components) >= 2
-        assert isinstance(mesh.components[0], MeshReTime)
-        assert isinstance(mesh.components[1], MeshReTime)
-
-        self.mesh = mesh
-        self.time_mesh = MeshProduct(mesh.components[0], mesh.components[1])
-        self.target_shape = target_shape
-
-        # 4 Keldysh components as real time GFs
-        self.data = [Gf(mesh=mesh, target_shape=target_shape) for _ in range(4)]
-
-    @classmethod
-    def from_g_l_g_g(cls, g_l, g_g):
-        """
-        Construct a KeldyshGF instance from a pair of lesser and greater
-        real time Green's functions.
-        """
-        assert g_l.mesh == g_g.mesh
-        assert g_l.target_shape == g_g.target_shape
-        assert g_l.mesh.components[0] == g_l.mesh.components[1]
-
-        g = KeldyshGF(g_l.mesh, g_l.target_shape)
+    def __init__(self, *,
+                 mesh: Union[MeshReTime, MeshProduct],
+                 target_subshapes: Tuple[Tuple[int, ...], ...] = None):
 
         #
-        # Fill Keldysh components
+        # Process the supplied mesh
         #
 
-        def ordered(z0, z1):
-            return contour_ordering2(z0, z1) == (0, 1)
+        if isinstance(mesh, MeshReTime):  # Single-argument contour function
+            self.mesh = MeshProduct(mesh)
+            self.time_mesh = mesh
+            self.non_time_mesh = MeshProduct()
+            self.n_args = 1
 
-        def slice_gf_2t(g: Gf, t0, t1):
-            n_non_t_mesh_comp = len(g.mesh.components) - 2
-            return g[(t0, t1) + (slice(None),) * n_non_t_mesh_comp]
-
-        non_t_slice = (slice(None),) * (len(g.mesh.components) - 2)
-
-        # Aoki RMP, Eqs. (17)
-        g[Branch.BACKWARD, Branch.FORWARD] = g_g
-        g[Branch.FORWARD, Branch.BACKWARD] = g_l
-        # Aoki RMP, Eqs. (15)
-        for t0, t1 in g.time_mesh:
-            sl = (t0, t1) + non_t_slice
-            z0 = ContourPoint(Branch.FORWARD, t0)
-            z1 = ContourPoint(Branch.FORWARD, t1)
-            g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
-            z0 = ContourPoint(Branch.BACKWARD, t0)
-            z1 = ContourPoint(Branch.BACKWARD, t1)
-            g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
-
-        return g
-
-    def _ravel_branch_indices(self, b1, b2):
-        return 2 * b1.value + b2.value
-
-    def __getitem__(self, points):
-        # Access one Keldysh block
-        if all(isinstance(p, Branch) for p in points):
-            return self.data[self._ravel_branch_indices(*points)]
-        # Access a single element
-        elif all(isinstance(p, ContourPoint) for p in points):
-            g = self.data[self._ravel_branch_indices(points[0].branch,
-                                                     points[1].branch)]
-            n_non_t_mesh_comp = len(g.mesh.components) - 2
-            return g[(points[0].t, points[1].t)
-                     + (slice(None),) * n_non_t_mesh_comp]
+        elif isinstance(mesh, MeshProduct):  # N-point Green's function
+            self.mesh = mesh
+            self.time_mesh = MeshProduct(
+                *takewhile(lambda m: isinstance(m, MeshReTime), mesh.components)
+            )
+            self.n_args = len(self.time_mesh.components)
+            if self.n_args == 0:
+                raise RuntimeError(
+                    "At least one leading component of the supplied mesh "
+                    "must be MeshReTime"
+                )
+            self.non_time_mesh = MeshProduct(mesh.components[self.n_args:])
         else:
-            raise IndexError("Unrecognized index format")
+            TypeError(f"Unsupported mesh type {type(mesh)}")
 
-    def __setitem__(self, points, value):
-        # Access one Keldysh block
-        if all(isinstance(p, Branch) for p in points):
-            self.data[self._ravel_branch_indices(*points)] = value
-        # Access a single element
-        elif all(isinstance(p, ContourPoint) for p in points):
-            g = self.data[self._ravel_branch_indices(points[0].branch,
-                                                     points[1].branch)]
-            n_non_t_mesh_comp = len(g.mesh.components) - 2
-            g[(points[0].t, points[1].t)
-              + (slice(None),) * n_non_t_mesh_comp] = value
+        #
+        # Process the target subshapes
+        #
+
+        # All subshapes are 0-dimensional by default
+        if target_subshapes is None:
+            self.target_subshapes = ((),) * self.n_args
+            self.target_shape = ()
         else:
-            raise IndexError("Unrecognized index format")
+            assert len(target_subshapes) == self.n_args, \
+                f"target_subshapes must contain {self.n_args} elements for " \
+                f"a {self.n_args}-point function"
+            self.target_subshapes = target_subshapes
+            self.target_shape = sum(target_subshapes, ())
+
+        #
+        # Allocate data storage
+        #
+
+        self.components = array(
+            [Gf(mesh=self.mesh, target_shape=self.target_shape)
+             for _ in range(2 ** self.n_args)]
+        ).reshape((2,) * self.n_args)
+
+    def __getitem__(self, args):
+        assert len(args) >= self.n_args, \
+            f"At least {self.n_args} arguments are required"
+
+        # Access a single point of the time mesh
+        if len(args) == self.n_args and \
+                all(isinstance(a, ContourPoint) for a in args):
+            g = self.components[tuple(a.branch.value for a in args)]
+            return g[tuple(a.t for a in args)
+                     + (slice(None),) * len(self.non_time_mesh)]
+
+        elif all(isinstance(a, Branch) for a in args[:self.n_args]):
+            if len(args) == self.n_args:  # Access one Keldysh block
+                return self.components[tuple(a.value for a in args)]
+            else:  # Pass extra indices to the block
+                g = self.components[tuple(a.value for a in args[:self.n_args])]
+                return g[args[self.n_args:]]
+
+        else:
+            raise IndexError(f"Unrecognized index format: {args}")
+
+    def __setitem__(self, args, value):
+        assert len(args) >= self.n_args, \
+            f"At least {self.n_args} arguments are required"
+
+        # Access a single point of the time mesh
+        if len(args) == self.n_args and \
+                all(isinstance(a, ContourPoint) for a in args):
+            g = self.components[tuple(a.branch.value for a in args)]
+            g[tuple(a.t for a in args)
+              + (slice(None),) * len(self.non_time_mesh)] = value
+
+        elif all(isinstance(a, Branch) for a in args[:self.n_args]):
+            if len(args) == self.n_args:  # Access one Keldysh block
+                self.components[tuple(a.value for a in args)] = value
+            else:  # Pass extra indices to the block
+                g = self.components[tuple(a.value for a in args[:self.n_args])]
+                g[args[self.n_args:]] = value
+
+        else:
+            raise IndexError(f"Unrecognized index format: {args}")
 
     #
-    # Extract components
+    # Simple arithmetic
     #
 
-    def greater(self):
-        return self[Branch.BACKWARD, Branch.FORWARD]
-
-    def lesser(self):
-        return self[Branch.FORWARD, Branch.BACKWARD]
-
-    def ret(self):
-        g_g = self[Branch.BACKWARD, Branch.FORWARD]
-        g_l = self[Branch.FORWARD, Branch.BACKWARD]
-        g_ret = Gf(mesh=self.mesh, target_shape=self.target_shape)
-        tril_idx = tril_indices(len(self.time_mesh.components[0]))
-        g_ret.data[tril_idx] = g_g.data[tril_idx] - g_l.data[tril_idx]
-        return g_ret
-
-    def adv(self):
-        g_g = self[Branch.BACKWARD, Branch.FORWARD]
-        g_l = self[Branch.FORWARD, Branch.BACKWARD]
-        g_adv = Gf(mesh=self.mesh, target_shape=self.target_shape)
-        triu_idx = triu_indices(len(self.time_mesh.components[0]))
-        g_adv.data[triu_idx] = g_l.data[triu_idx] - g_g.data[triu_idx]
-        return g_adv
-
-    #
-    # Arithmetics
-    #
+    def __eq__(self, other):
+        return self.mesh == other.mesh and \
+            self.target_subshapes == other.target_subshapes and \
+            self.components == other.components
 
     def __iadd__(self, other):
         assert self.mesh == other.mesh
-        assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data):
-            sd += od
+        assert self.target_subshapes == other.target_subshapes
+        self.components += other.components
         return self
 
     def __isub__(self, other):
         assert self.mesh == other.mesh
-        assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data):
-            sd -= od
+        assert self.target_subshapes == other.target_subshapes
+        self.components -= other.components
         return self
 
     def __imul__(self, x):
-        for sd in self.data:
-            sd *= x
+        self.components *= x
         return self
 
     def __add__(self, other):
@@ -230,190 +206,188 @@ class KeldyshGF:
         res *= -1
         return res
 
-    def __matmul__(self, other):
-        """Contour convolution"""
-        assert self.mesh == other.mesh
-
-        # Weights for quadrature rule
-        min_mesh_size = self.integrator.order + 1
-        assert len(self.mesh.components[1]) >= min_mesh_size, \
-               "Time grid must have at least %d nodes" % min_mesh_size
-        w = self.integrator.weights_conv(self.mesh.components[1])
-
-        res = deepcopy(self)
-
-        target_shape = ()
-
-        subscripts_self = "ik..."
-        subscripts_other = "kj..."
-        subscripts_res = "ij..."
-
-        if len(self.target_shape) == 1:  # Vector-valued
-            subscripts_self += "l"
-        elif len(self.target_shape) == 2:  # Matrix-valued
-            subscripts_self += "ml"
-            subscripts_res += "m"
-            target_shape = target_shape + (self.target_shape[0],)
-        elif len(self.target_shape) > 2:
-            raise RuntimeError("Contour convolution is not implemented "
-                               " for target dimensions > 2")
-
-        if len(other.target_shape) == 1:  # Vector-valued
-            subscripts_other += "l"
-        elif len(other.target_shape) == 2:  # Matrix-valued
-            subscripts_other += "ln"
-            subscripts_res += "n"
-            target_shape = target_shape + (other.target_shape[1],)
-        elif len(self.target_shape) > 2:
-            raise RuntimeError("Contour convolution is not implemented "
-                               " for target dimensions > 2")
-
-        subscripts = f"{subscripts_self},k,{subscripts_other}->{subscripts_res}"
-
-        res.target_shape = target_shape
-
-        FW, BW = Branch.FORWARD, Branch.BACKWARD
-        for b0, b1 in product(Branch, Branch):
-            res[b0, b1].data[:] = \
-                einsum(subscripts, self[b0, FW].data, w, other[FW, b1].data) - \
-                einsum(subscripts, self[b0, BW].data, w, other[BW, b1].data)
-
-        return res
+#
+# Functions specific to the 2-point GFs
+#
 
 
-class KeldyshVertex3:
-    """Three-point vertex function <c c^+ \\rho> on the Keldysh contour"""
+def greater(g: KeldyshGF) -> Gf:
+    r"""Returns the greater component of a 2-point Keldysh Green's function"""
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+    return g[Branch.BACKWARD, Branch.FORWARD]
 
-    """Integrator object for contour convolutions"""
-    integrator = GregoryIntegrator(5)
 
-    def __init__(self, mesh: MeshProduct, target_shape=()):
-        # The mesh must at least have three real time components
-        assert len(mesh.components) >= 3
-        assert isinstance(mesh.components[0], MeshReTime)
-        assert isinstance(mesh.components[1], MeshReTime)
-        assert isinstance(mesh.components[2], MeshReTime)
+def lesser(g: KeldyshGF) -> Gf:
+    r"""Returns the lesser component of a 2-point Keldysh Green's function"""
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+    return g[Branch.FORWARD, Branch.BACKWARD]
 
-        self.mesh = mesh
-        self.time_mesh = MeshProduct(mesh.components[0],
-                                     mesh.components[1],
-                                     mesh.components[2])
-        self.target_shape = target_shape
 
-        # 8 Keldysh components as real time GFs
-        self.data = [Gf(mesh=mesh, target_shape=target_shape) for _ in range(8)]
+def retarded(g: KeldyshGF) -> Gf:
+    r"""Returns the retarded component of a 2-point Keldysh Green's function"""
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+    g_g = g[Branch.BACKWARD, Branch.FORWARD]
+    g_l = g[Branch.FORWARD, Branch.BACKWARD]
+    g_ret = Gf(mesh=g.mesh, target_shape=g.target_shape)
+    tril_idx = tril_indices(len(g.time_mesh.components[0]))
+    g_ret.data[tril_idx] = g_g.data[tril_idx] - g_l.data[tril_idx]
+    return g_ret
 
-    @classmethod
-    def from_G_perm_pieces(cls, G: Dict[Tuple[int, int, int], Gf]):
-        r"""
-        Each element of dictionary G corresponds to one permutation of operators
-        in the correlator,
-        $$
+
+def advanced(g: KeldyshGF) -> Gf:
+    r"""Returns the advanced component of a 2-point Keldysh Green's function"""
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+    g_g = g[Branch.BACKWARD, Branch.FORWARD]
+    g_l = g[Branch.FORWARD, Branch.BACKWARD]
+    g_adv = Gf(mesh=g.mesh, target_shape=g.target_shape)
+    triu_idx = triu_indices(len(g.time_mesh.components[0]))
+    g_adv.data[triu_idx] = g_l.data[triu_idx] - g_g.data[triu_idx]
+    return g_adv
+
+
+def from_lesser_greater(g_l: Gf, g_g: Gf, n_left_target_axes=None) -> KeldyshGF:
+    r"""
+    Construct a 2-point KeldyshGF object from a pair of lesser and greater
+    real time Green's functions.
+    """
+    assert g_l.mesh == g_g.mesh
+    assert g_l.target_shape == g_g.target_shape
+    assert len(g_l.mesh.components) >= 2
+    assert isinstance(g_l.mesh.components[0], MeshReTime) and \
+           isinstance(g_l.mesh.components[1], MeshReTime)
+
+    if n_left_target_axes is None:
+        assert len(g_l.target_shape) % 2 == 0
+        n_left_target_axes = len(g_l.target_shape) // 2
+
+    target_subshapes = (g_l.target_shape[:n_left_target_axes],
+                        g_l.target_shape[n_left_target_axes:])
+
+    g = KeldyshGF(mesh=g_l.mesh, target_subshapes=target_subshapes)
+
+    #
+    # Fill Keldysh components
+    #
+
+    def ordered(z0, z1):
+        return contour_ordering(z0, z1) == (0, 1)
+
+    non_t_slice = (slice(None),) * len(g.non_time_mesh)
+
+    # Aoki RMP, Eqs. (17)
+    g[Branch.BACKWARD, Branch.FORWARD] = g_g
+    g[Branch.FORWARD, Branch.BACKWARD] = g_l
+    # Aoki RMP, Eqs. (15)
+    for t0, t1 in g.time_mesh:
+        sl = (t0, t1) + non_t_slice
+        z0 = ContourPoint(Branch.FORWARD, t0)
+        z1 = ContourPoint(Branch.FORWARD, t1)
+        g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
+        z0 = ContourPoint(Branch.BACKWARD, t0)
+        z1 = ContourPoint(Branch.BACKWARD, t1)
+        g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
+
+    return g
+
+#
+# Functions specific to the 3-point GFs
+#
+
+
+def from_vertex3_pieces(G: Dict[Tuple[int, int, int], Gf]) -> KeldyshGF:
+    r"""
+    Construct a 3-point vertex from 6 real-time correlators.
+
+    Each element of dictionary G corresponds to one permutation of operators
+    in the correlator,
+    $$
         G_{ijk}(t_0, t_1, t_2) = -\xi_{ijk} <O_i(t_i) O_j(t_j) O_k(t_k)>,
-        $$
-        where $O_0(t_0) = c(t_0)$, $O_1(t_1) = c^\dagger(t_1)$,
-        $O_2(t_2) = \rho(t_2)$. $\xi_{ijk} = -1$ if permutation (ijk) swaps
-        indices 0 and 1, and +1 otherwise.
+    $$
+    where $O_0(t_0) = c(t_0)$, $O_1(t_1) = c^\dagger(t_1)$,
+    $O_2(t_2) = \rho(t_2)$. $\xi_{ijk} = -1$ if permutation (ijk) swaps
+    indices 0 and 1, and +1 otherwise.
 
-        Keys are 3! = 6 triplets (i, j, k), which are permutations of (0, 1, 2)
-        indicating the respective order of $c$, $c^\dagger$ and $\rho$.
-        """
+    Keys are 3! = 6 triplets (i, j, k), which are permutations of (0, 1, 2)
+    indicating the respective order of $c$, $c^\dagger$ and $\rho$.
+    """
+    assert len(G) == 6
 
-        assert len(G) == 6
-        mesh = next(iter(G.values())).mesh
-        target_shape = next(iter(G.values())).target_shape
-        assert all(p.mesh == mesh for p in G.values())
-        assert all(p.target_shape == target_shape for p in G.values())
+    G0 = next(iter(G.values()))
+    assert all(p.mesh == G0.mesh for p in G.values())
+    assert all(p.target_shape == G0.target_shape for p in G.values())
 
-        Lambda = KeldyshVertex3(mesh, target_shape)
+    ts_len = len(G0.target_shape)
+    assert ts_len % 3 == 0, \
+        "Target shape of the pieces must contain a multiple of 3 elements"
+    target_subshapes = (
+        G0.target_shape[:ts_len // 3],
+        G0.target_shape[ts_len // 3: 2 * ts_len // 3],
+        G0.target_shape[2 * ts_len // 3:]
+    )
 
-        #
-        # Fill Keldysh components
-        #
-
-        for a0, a1, a2 in product(Branch, repeat=3):
-            for t0, t1, t2 in Lambda.mesh:
-                z0 = ContourPoint(a0, t0)
-                z1 = ContourPoint(a1, t1)
-                z2 = ContourPoint(a2, t2)
-                order = contour_ordering3(z0, z1, z2)
-                Lambda[z0, z1, z2] = G[order][t0, t1, t2]
-
-        return Lambda
-
-    def _ravel_branch_indices(self, b1, b2, b3):
-        return 4 * b1.value + 2 * b2.value + b3.value
-
-    def __getitem__(self, points):
-        # Access one Keldysh block
-        if all(isinstance(p, Branch) for p in points):
-            return self.data[self._ravel_branch_indices(*points)]
-        # Access a single element
-        elif all(isinstance(p, ContourPoint) for p in points):
-            return self.data[self._ravel_branch_indices(points[0].branch,
-                                                        points[1].branch,
-                                                        points[2].branch)][
-                points[0].t, points[1].t, points[2].t]
-        else:
-            raise IndexError("Unrecognized index format")
-
-    def __setitem__(self, points, value):
-        # Access one Keldysh block
-        if all(isinstance(p, Branch) for p in points):
-            self.data[self._ravel_branch_indices(*points)] = value
-        # Access a single element
-        elif all(isinstance(p, ContourPoint) for p in points):
-            self.data[self._ravel_branch_indices(points[0].branch,
-                                                 points[1].branch,
-                                                 points[2].branch)][
-                points[0].t, points[1].t, points[2].t] = value
-        else:
-            raise IndexError("Unrecognized index format")
+    Lambda = KeldyshGF(mesh=G0.mesh, target_subshapes=target_subshapes)
 
     #
-    # Arithmetics
+    # Fill Keldysh components
     #
 
-    def __iadd__(self, other):
-        assert self.mesh == other.mesh
-        assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data):
-            sd += od
-        return self
+    for a0, a1, a2 in product(Branch, repeat=3):
+        for t0, t1, t2 in Lambda.mesh:
+            z0 = ContourPoint(a0, t0)
+            z1 = ContourPoint(a1, t1)
+            z2 = ContourPoint(a2, t2)
+            order = contour_ordering(z0, z1, z2)
+            Lambda[z0, z1, z2] = G[order][t0, t1, t2]
 
-    def __isub__(self, other):
-        assert self.mesh == other.mesh
-        assert self.target_shape == other.target_shape
-        for sd, od in zip(self.data, other.data):
-            sd -= od
-        return self
+    return Lambda
 
-    def __imul__(self, x):
-        for sd in self.data:
-            sd *= x
-        return self
 
-    def __add__(self, other):
-        res = deepcopy(self)
-        res += other
-        return res
-
-    def __sub__(self, other):
-        res = deepcopy(self)
-        res -= other
-        return res
-
-    def __mul__(self, x):
-        res = deepcopy(self)
-        res *= x
-        return res
-
-    def __rmul__(self, x):
-        res = deepcopy(self)
-        res *= x
-        return res
-
-    def __neg__(self):
-        res = deepcopy(self)
-        res *= -1
-        return res
+# def __matmul__(self, other):
+#     """Contour convolution"""
+#     assert self.mesh == other.mesh
+#
+#     # Weights for quadrature rule
+#     min_mesh_size = self.integrator.order + 1
+#     assert len(self.mesh.components[1]) >= min_mesh_size, \
+#         "Time grid must have at least %d nodes" % min_mesh_size
+#     w = self.integrator.weights_conv(self.mesh.components[1])
+#
+#     res = deepcopy(self)
+#
+#     target_shape = ()
+#
+# subscripts_self = "ik..."
+# subscripts_other = "kj..."
+#     subscripts_res = "ij..."
+#
+#     if len(self.target_shape) == 1:  # Vector-valued
+#         subscripts_self += "l"
+#     elif len(self.target_shape) == 2:  # Matrix-valued
+#     subscripts_self += "ml"
+#         subscripts_res += "m"
+#         target_shape = target_shape + (self.target_shape[0],)
+#     elif len(self.target_shape) > 2:
+#         raise RuntimeError("Contour convolution is not implemented "
+#                         " for target dimensions > 2")
+#
+#     if len(other.target_shape) == 1:  # Vector-valued
+#         subscripts_other += "l"
+#     elif len(other.target_shape) == 2:  # Matrix-valued
+#         subscripts_other += "ln"
+#         subscripts_res += "n"
+#         target_shape = target_shape + (other.target_shape[1],)
+#     elif len(self.target_shape) > 2:
+#         raise RuntimeError("Contour convolution is not implemented "
+#                         " for target dimensions > 2")
+#
+#     subscripts = f"{subscripts_self},k,{subscripts_other}->{subscripts_res}"
+#
+#     res.target_shape = target_shape
+#
+#     FW, BW = Branch.FORWARD, Branch.BACKWARD
+#     for b0, b1 in product(Branch, Branch):
+#         res[b0, b1].data[:] = \
+#             einsum(subscripts, self[b0, FW].data, w, other[FW, b1].data) - \
+#             einsum(subscripts, self[b0, BW].data, w, other[BW, b1].data)
+#
+#     return res
