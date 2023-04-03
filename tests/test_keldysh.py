@@ -36,6 +36,8 @@ class test_keldysh(unittest.TestCase):
         cls.ttt_mesh = MeshProduct(cls.t_mesh, cls.t_mesh, cls.t_mesh)
         cls.t_points = list(cls.t_mesh)
 
+        cls.bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # Square lattice
+
     def test_contour_ordering2(self):
         t1 = self.t_points[2]
         t2 = self.t_points[3]
@@ -259,6 +261,98 @@ class test_keldysh(unittest.TestCase):
         assert_array_equal((-g)[CP(BW, t), CP(FW, t)].data,
                            -6.0 * np.ones(non_t_shape))
 
+    def test_keldysh_gf_n_args0(self):
+        for mesh in (None, MeshProduct()):
+            g = KeldyshGF(mesh=mesh)
+
+            self.assertEqual(g.mesh, MeshProduct())
+            self.assertEqual(g.time_mesh, MeshProduct())
+            self.assertEqual(g.non_time_mesh, MeshProduct())
+            self.assertEqual(g.n_args, 0)
+            self.assertEqual(g.components.shape, ())
+            # __getitem__()
+            g.components[()].data[()] = 2.0
+            self.assertEqual(g[()].data, 2.0)
+            # __setitem__()
+            g[()].data[()] = 3.0
+            self.assertEqual(g.components[()].data[()], 3.0)
+
+    def test_keldysh_gf_n_args0_bz(self):
+        n_k = 10
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        g = KeldyshGF(mesh=MeshProduct(bz_mesh))
+
+        self.assertEqual(g.mesh, MeshProduct(bz_mesh))
+        self.assertEqual(g.time_mesh, MeshProduct())
+        self.assertEqual(g.non_time_mesh, MeshProduct(bz_mesh))
+        self.assertEqual(g.n_args, 0)
+        self.assertEqual(g.components.shape, ())
+        for i, k in enumerate(bz_mesh):
+            # __getitem__()
+            g.components[()].data[i] = i
+            self.assertEqual(g[k], i)
+            # __setitem__()
+            g[k] = i + 1
+            self.assertEqual(g.components[()].data[i], i + 1)
+
+    def test_keldysh_gf_n_args1(self):
+        for mesh in (self.t_mesh, MeshProduct(self.t_mesh)):
+            g = KeldyshGF(mesh=mesh, target_subshapes=((3,),))
+
+            self.assertEqual(g.mesh, MeshProduct(self.t_mesh))
+            self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh))
+            self.assertEqual(g.non_time_mesh, MeshProduct())
+            self.assertEqual(g.n_args, 1)
+            self.assertEqual(g.components.shape, (2,))
+
+            t = next(iter(self.t_mesh))
+
+            # __getitem__()
+            g.components[1].data[:] = 2.0
+            assert_array_equal(g[Branch.BACKWARD].data,
+                               2.0 * np.ones((self.n_t, 3)))
+            g.components[1].data[:] = 3.0
+            assert_array_equal(g[Branch.BACKWARD, t],
+                               3.0 * np.ones(3))
+            # __setitem__()
+            g[Branch.FORWARD].data[:] = 4.0
+            assert_array_equal(g.components[0].data,
+                               4.0 * np.ones((self.n_t, 3)))
+            g[Branch.FORWARD, t] = 5.0
+            assert_array_equal(g.components[0].data[0, :],
+                               5.0 * np.ones(3))
+
+    def test_keldysh_gf_n_args1_bz(self):
+        n_k = 10
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        mesh = MeshProduct(self.t_mesh, bz_mesh)
+        g = KeldyshGF(mesh=mesh, target_subshapes=((3,),))
+
+        self.assertEqual(g.mesh, mesh)
+        self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh))
+        self.assertEqual(g.non_time_mesh, MeshProduct(bz_mesh))
+        self.assertEqual(g.n_args, 1)
+        self.assertEqual(g.components.shape, (2,))
+
+        t = next(iter(self.t_mesh))
+
+        # __getitem__()
+        g.components[1].data[:] = 2.0
+        assert_array_equal(g[Branch.BACKWARD].data,
+                           2.0 * np.ones((self.n_t, n_k * n_k, 3)))
+        # __setitem__()
+        g[Branch.FORWARD].data[:] = 4.0
+        assert_array_equal(g.components[0].data,
+                           4.0 * np.ones((self.n_t, n_k * n_k, 3)))
+
+        for i, k in enumerate(bz_mesh):
+            # __getitem__()
+            g.components[1].data[:, i] = i
+            assert_array_equal(g[Branch.BACKWARD, t, k], i * np.ones(3))
+            # __setitem__()
+            g[Branch.BACKWARD, t, k] = i
+            assert_array_equal(g.components[1].data[0, i, :], i * np.ones(3))
+
     def test_keldysh_gf(self):
         for target_shape in ((), (2, 2)):
             # Construct from lesser and greater GF
@@ -277,9 +371,8 @@ class test_keldysh(unittest.TestCase):
             self._test_gf(g)
 
     def test_keldysh_gf_bz(self):
-        bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # Square lattice
         n_k = 10
-        bz_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k)
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
 
         mesh = MeshProduct(*self.tt_mesh.components, bz_mesh)
 

@@ -69,9 +69,15 @@ class KeldyshGF:
         # Process the supplied mesh
         #
 
-        if isinstance(mesh, MeshReTime):  # Single-argument contour function
+        if mesh is None:  # Constant
+            self.mesh = MeshProduct()
+            self.time_mesh = MeshProduct()
+            self.non_time_mesh = MeshProduct()
+            self.n_args = 0
+
+        elif isinstance(mesh, MeshReTime):  # Single-argument contour function
             self.mesh = MeshProduct(mesh)
-            self.time_mesh = mesh
+            self.time_mesh = self.mesh
             self.non_time_mesh = MeshProduct()
             self.n_args = 1
 
@@ -81,14 +87,12 @@ class KeldyshGF:
                 *takewhile(lambda m: isinstance(m, MeshReTime), mesh.components)
             )
             self.n_args = len(self.time_mesh.components)
-            if self.n_args == 0:
-                raise RuntimeError(
-                    "At least one leading component of the supplied mesh "
-                    "must be MeshReTime"
-                )
-            self.non_time_mesh = MeshProduct(mesh.components[self.n_args:])
+            if len(mesh.components[self.n_args:]) != 0:
+                self.non_time_mesh = MeshProduct(*mesh.components[self.n_args:])
+            else:
+                self.non_time_mesh = MeshProduct()
         else:
-            TypeError(f"Unsupported mesh type {type(mesh)}")
+            raise TypeError(f"Unsupported mesh type {type(mesh)}")
 
         #
         # Process the target subshapes
@@ -115,43 +119,51 @@ class KeldyshGF:
         ).reshape((2,) * self.n_args)
 
     def __getitem__(self, args):
-        assert len(args) >= self.n_args, \
+        args_t = args if isinstance(args, tuple) else (args,)
+
+        assert len(args_t) >= self.n_args, \
             f"At least {self.n_args} arguments are required"
 
-        # Access a single point of the time mesh
-        if len(args) == self.n_args and \
-                all(isinstance(a, ContourPoint) for a in args):
-            g = self.components[tuple(a.branch.value for a in args)]
-            return g[tuple(a.t for a in args)
-                     + (slice(None),) * len(self.non_time_mesh)]
-
-        elif all(isinstance(a, Branch) for a in args[:self.n_args]):
-            if len(args) == self.n_args:  # Access one Keldysh block
-                return self.components[tuple(a.value for a in args)]
+        if all(isinstance(a, Branch) for a in args_t[:self.n_args]):
+            if len(args_t) == self.n_args:  # Access one Keldysh block
+                return self.components[tuple(a.value for a in args_t)]
             else:  # Pass extra indices to the block
-                g = self.components[tuple(a.value for a in args[:self.n_args])]
-                return g[args[self.n_args:]]
+                g = self.components[
+                    tuple(a.value for a in args_t[:self.n_args])
+                ]
+                return g[args_t[self.n_args:]]
+
+        # Access a single point of the time mesh
+        elif len(args_t) == self.n_args and \
+                all(isinstance(a, ContourPoint) for a in args_t):
+            g = self.components[tuple(a.branch.value for a in args_t)]
+            return g[tuple(a.t for a in args_t)
+                     + (slice(None),) * len(self.non_time_mesh.components)]
 
         else:
             raise IndexError(f"Unrecognized index format: {args}")
 
     def __setitem__(self, args, value):
-        assert len(args) >= self.n_args, \
+        args_t = args if isinstance(args, tuple) else (args,)
+
+        assert len(args_t) >= self.n_args, \
             f"At least {self.n_args} arguments are required"
 
-        # Access a single point of the time mesh
-        if len(args) == self.n_args and \
-                all(isinstance(a, ContourPoint) for a in args):
-            g = self.components[tuple(a.branch.value for a in args)]
-            g[tuple(a.t for a in args)
-              + (slice(None),) * len(self.non_time_mesh)] = value
-
-        elif all(isinstance(a, Branch) for a in args[:self.n_args]):
-            if len(args) == self.n_args:  # Access one Keldysh block
-                self.components[tuple(a.value for a in args)] = value
+        if all(isinstance(a, Branch) for a in args_t[:self.n_args]):
+            if len(args_t) == self.n_args:  # Access one Keldysh block
+                self.components[tuple(a.value for a in args_t)] = value
             else:  # Pass extra indices to the block
-                g = self.components[tuple(a.value for a in args[:self.n_args])]
-                g[args[self.n_args:]] = value
+                g = self.components[
+                    tuple(a.value for a in args_t[:self.n_args])
+                ]
+                g[args_t[self.n_args:]] = value
+
+        # Access a single point of the time mesh
+        elif len(args_t) == self.n_args and \
+                all(isinstance(a, ContourPoint) for a in args_t):
+            g = self.components[tuple(a.branch.value for a in args_t)]
+            g[tuple(a.t for a in args_t)
+              + (slice(None),) * len(self.non_time_mesh.components)] = value
 
         else:
             raise IndexError(f"Unrecognized index format: {args}")
@@ -272,7 +284,7 @@ def from_lesser_greater(g_l: Gf, g_g: Gf, n_left_target_axes=None) -> KeldyshGF:
     def ordered(z0, z1):
         return contour_ordering(z0, z1) == (0, 1)
 
-    non_t_slice = (slice(None),) * len(g.non_time_mesh)
+    non_t_slice = (slice(None),) * len(g.non_time_mesh.components)
 
     # Aoki RMP, Eqs. (17)
     g[Branch.BACKWARD, Branch.FORWARD] = g_g
