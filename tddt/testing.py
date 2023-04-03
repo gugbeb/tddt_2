@@ -3,12 +3,12 @@
 #
 
 from itertools import product
-from numpy.testing import assert_array_almost_equal
+from numpy.testing import assert_allclose
 
 from tddt.keldysh import Branch, KeldyshGF
 
 
-def assert_keldysh_gf_almost_equal(g: KeldyshGF, g_ref: KeldyshGF, decimal=6):
+def assert_keldysh_gf_almost_equal(g: KeldyshGF, g_ref: KeldyshGF, **kwargs):
     """
     Assert two KeldyshGF object having the same structure and being numerically
     close.
@@ -18,4 +18,4 @@ def assert_keldysh_gf_almost_equal(g: KeldyshGF, g_ref: KeldyshGF, decimal=6):
     for br in product(Branch, repeat=g.n_args):
         assert g[br].mesh == g_ref[br].mesh
         assert g[br].target_shape == g_ref[br].target_shape
-        assert_array_almost_equal(g[br].data, g_ref[br].data, decimal)
+        assert_allclose(g[br].data, g_ref[br].data, **kwargs)

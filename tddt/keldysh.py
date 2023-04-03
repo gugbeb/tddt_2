@@ -4,11 +4,12 @@
 
 from enum import Enum
 from copy import deepcopy
-from itertools import product, takewhile
-from typing import Tuple, Dict, Union
-from numpy import array, tril_indices, triu_indices
+from itertools import product, takewhile, islice
+from typing import Tuple, Dict, Union, Sequence
+from numpy import array, tril_indices, triu_indices, einsum
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
+from .util import subscripts
 from .integration import GregoryIntegrator
 
 
@@ -106,7 +107,7 @@ class KeldyshGF:
             assert len(target_subshapes) == self.n_args, \
                 f"target_subshapes must contain {self.n_args} elements for " \
                 f"a {self.n_args}-point function"
-            self.target_subshapes = target_subshapes
+            self.target_subshapes = tuple(target_subshapes)
             self.target_shape = sum(target_subshapes, ())
 
         #
@@ -218,6 +219,13 @@ class KeldyshGF:
         res *= -1
         return res
 
+    def __matmul__(self, other):
+        r"""
+        Contour convolution over the last argument of 'self' and
+        the first argument of 'other'.
+        """
+        return conv(self, other, [(-1, 0)])
+
 #
 # Functions specific to the 2-point GFs
 #
@@ -241,7 +249,9 @@ def retarded(g: KeldyshGF) -> Gf:
     g_g = g[Branch.BACKWARD, Branch.FORWARD]
     g_l = g[Branch.FORWARD, Branch.BACKWARD]
     g_ret = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    tril_idx = tril_indices(len(g.time_mesh.components[0]))
+    tril_idx = tril_indices(len(g.time_mesh.components[0]),
+                            0,
+                            len(g.time_mesh.components[1]))
     g_ret.data[tril_idx] = g_g.data[tril_idx] - g_l.data[tril_idx]
     return g_ret
 
@@ -252,7 +262,9 @@ def advanced(g: KeldyshGF) -> Gf:
     g_g = g[Branch.BACKWARD, Branch.FORWARD]
     g_l = g[Branch.FORWARD, Branch.BACKWARD]
     g_adv = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    triu_idx = triu_indices(len(g.time_mesh.components[0]))
+    triu_idx = triu_indices(len(g.time_mesh.components[0]),
+                            0,
+                            len(g.time_mesh.components[1]))
     g_adv.data[triu_idx] = g_l.data[triu_idx] - g_g.data[triu_idx]
     return g_adv
 
@@ -354,52 +366,222 @@ def from_vertex3_pieces(G: Dict[Tuple[int, int, int], Gf]) -> KeldyshGF:
     return Lambda
 
 
-# def __matmul__(self, other):
-#     """Contour convolution"""
-#     assert self.mesh == other.mesh
-#
-#     # Weights for quadrature rule
-#     min_mesh_size = self.integrator.order + 1
-#     assert len(self.mesh.components[1]) >= min_mesh_size, \
-#         "Time grid must have at least %d nodes" % min_mesh_size
-#     w = self.integrator.weights_conv(self.mesh.components[1])
-#
-#     res = deepcopy(self)
-#
-#     target_shape = ()
-#
-# subscripts_self = "ik..."
-# subscripts_other = "kj..."
-#     subscripts_res = "ij..."
-#
-#     if len(self.target_shape) == 1:  # Vector-valued
-#         subscripts_self += "l"
-#     elif len(self.target_shape) == 2:  # Matrix-valued
-#     subscripts_self += "ml"
-#         subscripts_res += "m"
-#         target_shape = target_shape + (self.target_shape[0],)
-#     elif len(self.target_shape) > 2:
-#         raise RuntimeError("Contour convolution is not implemented "
-#                         " for target dimensions > 2")
-#
-#     if len(other.target_shape) == 1:  # Vector-valued
-#         subscripts_other += "l"
-#     elif len(other.target_shape) == 2:  # Matrix-valued
-#         subscripts_other += "ln"
-#         subscripts_res += "n"
-#         target_shape = target_shape + (other.target_shape[1],)
-#     elif len(self.target_shape) > 2:
-#         raise RuntimeError("Contour convolution is not implemented "
-#                         " for target dimensions > 2")
-#
-#     subscripts = f"{subscripts_self},k,{subscripts_other}->{subscripts_res}"
-#
-#     res.target_shape = target_shape
-#
-#     FW, BW = Branch.FORWARD, Branch.BACKWARD
-#     for b0, b1 in product(Branch, Branch):
-#         res[b0, b1].data[:] = \
-#             einsum(subscripts, self[b0, FW].data, w, other[FW, b1].data) - \
-#             einsum(subscripts, self[b0, BW].data, w, other[BW, b1].data)
-#
-#     return res
+def conv(a: KeldyshGF,  # noqa: C901
+         b: KeldyshGF,
+         coupled_args: Sequence[Tuple[int, int]] = [],
+         *,
+         free_args: Tuple[Sequence[int], Sequence[int]] = None,
+         ) -> KeldyshGF:
+    r"""
+    Compute a contour convolution and a sum over its corresponding target
+    indices of two contour function 'a' and 'b' w.r.t. one or more pairs
+    of arguments.
+
+    a: First function in the convolution.
+    b: Second function in the convolution.
+    coupled_args: Each element of this tuple is a pair of indices of the
+                  arguments to integrate over (one index for 'a' and the other
+                  for 'b'). Negative indices are interpreted as counting
+                  from the end of the respective argument list.
+    free_args: Specifies how arguments of the convolution result are distributed
+               between 'free' (non-integrated) arguments of 'a' and 'b'.
+               For example, coupled_args = (1, 2),
+               free_args = ((0, 2, 3), (1, 4)) may results in the following
+               convolution,
+
+               f(z_0, z_1, z_2, z_3, z_4) = \inf_C dz'
+                    a(z_0, z', z_2, z_3) b(z_1, z_4, z').
+    """
+
+    # Normalize the tuple of coupled arguments by resolving the negative
+    # indices, removing duplicate pairs and sorting the resulting list
+    conv_args = []
+    for arg_a, arg_b in coupled_args:
+        assert -a.n_args <= arg_a < a.n_args, \
+            f"Wrong argument number {arg_a} for the first function with " \
+            "{a.n_args} arguments"
+        assert -b.n_args <= arg_b < b.n_args, \
+            f"Wrong argument number {arg_b} for the second function with " \
+            "{b.n_args} arguments"
+        conv_args.append((arg_a if arg_a >= 0 else a.n_args + arg_a,
+                          arg_b if arg_b >= 0 else b.n_args + arg_b))
+
+    conv_args = sorted(list(set(conv_args)))
+    n_conv_args = len(conv_args)
+
+    n_args_res = a.n_args + b.n_args - 2 * n_conv_args
+    assert n_args_res >= 0
+
+    #
+    # Process free_args
+    #
+
+    if free_args is None:
+        # By default, arguments of the results are substituted into a and b
+        # in the original left-to-right order.
+        free_args_a = list(range(a.n_args - n_conv_args))
+        free_args_b = list(range(a.n_args - n_conv_args, n_args_res))
+    else:
+        assert len(free_args) == 2, "Expected 2 elements in free_args"
+        free_args_a, free_args_b = free_args
+        assert len(free_args_a) == a.n_args - n_conv_args, \
+            f"There must be exactly {a.n_args - n_conv_args} in " \
+            f"free_args[0], got {len(free_args_a)}"
+        assert len(free_args_b) == b.n_args - n_conv_args, \
+            f"There must be exactly {b.n_args - n_conv_args} in " \
+            f"free_args[1], got {len(free_args_b)}"
+
+    free_args_all = set(free_args_a).union(free_args_b)
+    assert len(free_args_all) == len(free_args_a) + len(free_args_b), \
+        "No repeated numbers are allowed in free_args"
+    assert free_args_all == set(range(n_args_res)), \
+        f"Numbers in free_args must fully cover the {range(n_args_res)}"
+
+    #
+    # Label arguments with numbers
+    #
+
+    arg_indices_a = [None] * a.n_args
+    arg_indices_b = [None] * b.n_args
+
+    # Process coupled arguments
+    for i, (arg_a, arg_b) in enumerate(conv_args):
+        arg_indices_a[arg_a] = n_args_res + i
+        arg_indices_b[arg_b] = n_args_res + i
+    # Process free arguments of a
+    i = 0
+    for arg_a, ind_a in enumerate(arg_indices_a):
+        if ind_a is None:
+            arg_indices_a[arg_a] = free_args_a[i]
+            i += 1
+    # Process free arguments of b
+    i = 0
+    for arg_b, ind_b in enumerate(arg_indices_b):
+        if ind_b is None:
+            arg_indices_b[arg_b] = free_args_b[i]
+            i += 1
+
+    #
+    # Handle the time components of the meshes
+    #
+
+    min_t_mesh_size = a.integrator.order + 1
+
+    # Check mesh compatibility and compute integration weights
+    w = []
+    for arg_a, arg_b in conv_args:
+        t_mesh_a = a.time_mesh.components[arg_a]
+        t_mesh_b = b.time_mesh.components[arg_b]
+        assert t_mesh_a == t_mesh_b, \
+            f"Incompatible time mesh components {t_mesh_a} and {t_mesh_b} for" \
+            f" the coupled argument pair ({arg_a}, {arg_b})"
+        assert len(t_mesh_a) >= min_t_mesh_size, \
+            f"Time mesh of a's argument {arg_a} must have " \
+            f"at least {min_t_mesh_size} nodes"
+
+        w.append(a.integrator.weights_conv(t_mesh_a))
+
+    # Gather components of the resulting mesh
+    mesh_comps_res = [None] * n_args_res
+    for arg_a, arg_res in enumerate(arg_indices_a):
+        if arg_res < n_args_res:
+            mesh_comps_res[arg_res] = a.time_mesh.components[arg_a]
+    for arg_b, arg_res in enumerate(arg_indices_b):
+        if arg_res < n_args_res:
+            mesh_comps_res[arg_res] = b.time_mesh.components[arg_b]
+
+    # Generate einsum() subscripts
+    ts = subscripts['time']
+    subs_a_t = ''.join([ts[i] for i in arg_indices_a])
+    subs_b_t = ''.join([ts[i] for i in arg_indices_b])
+    subs_res_t = ts[:n_args_res]
+    subs_w = [ts[n_args_res + i] for i in range(len(conv_args))]
+
+    #
+    # Handle the non-time components of the meshes
+    #
+
+    nt_mesh_a = a.non_time_mesh.components
+    nt_mesh_b = b.non_time_mesh.components
+
+    nts = subscripts['nontime']
+    if nt_mesh_a == nt_mesh_b:
+        # If the non-time components of the meshes of a and b agree, then we
+        # use the same non-time mesh for the result
+        ss = nts[:len(nt_mesh_a)]
+        subs_a_nt = ss
+        subs_b_nt = ss
+        subs_res_nt = ss
+
+        mesh_comps_res += nt_mesh_a
+    else:
+        # Otherwise the result is defined on a direct product of the meshes.
+        ss = nts[:len(nt_mesh_a)]
+        subs_a_nt = ss
+        subs_res_nt = ss
+        ss = nts[len(nt_mesh_a):len(nt_mesh_a) + len(nt_mesh_b)]
+        subs_b_nt = ss
+        subs_res_nt += ss
+
+        mesh_comps_res += nt_mesh_a + nt_mesh_b
+
+    #
+    # Handle the targets
+    #
+
+    # Check subshapes compatibility
+    for arg_a, arg_b in conv_args:
+        subshape_a = a.target_subshapes[arg_a]
+        subshape_b = b.target_subshapes[arg_b]
+        assert subshape_a == subshape_b, \
+            f"Incompatible target sub-shapes {subshape_a} and {subshape_b} for"\
+            f" the coupled argument pair ({arg_a}, {arg_b})"
+
+    # Gather components of the resulting subshapes
+    subshapes_res = [None] * n_args_res
+    for arg_a, arg_res in enumerate(arg_indices_a):
+        if arg_res < n_args_res:
+            subshapes_res[arg_res] = a.target_subshapes[arg_a]
+    for arg_b, arg_res in enumerate(arg_indices_b):
+        if arg_res < n_args_res:
+            subshapes_res[arg_res] = b.target_subshapes[arg_b]
+
+    # Collect sub-shapes of all n_args_res + n_conv_args arguments
+    subshapes_all = subshapes_res[:]
+    for arg_a, _ in conv_args:
+        subshapes_all.append(a.target_subshapes[arg_a])
+
+    # Compile a partitioned list of target subscripts
+    tgs_it = iter(subscripts['target'])
+    tgs = [''.join(islice(tgs_it, len(subshape))) for subshape in subshapes_all]
+
+    # Generate einsum() subscripts
+    subs_a_tg = ''.join([tgs[i] for i in arg_indices_a])
+    subs_b_tg = ''.join([tgs[i] for i in arg_indices_b])
+    subs_res_tg = ''.join(tgs[:n_args_res])
+
+    #
+    # Perform summation
+    #
+
+    subs_a = subs_a_t + subs_a_nt + subs_a_tg
+    subs_b = subs_b_t + subs_b_nt + subs_b_tg
+    subs_res = subs_res_t + subs_res_nt + subs_res_tg
+
+    subs = f"{subs_a}," + ','.join(subs_w) + f",{subs_b}->{subs_res}"
+
+    res = KeldyshGF(mesh=MeshProduct(*mesh_comps_res),
+                    target_subshapes=subshapes_res)
+
+    for br in product(Branch, repeat=n_args_res + n_conv_args):
+        br_a = tuple(br[i] for i in arg_indices_a)
+        br_b = tuple(br[i] for i in arg_indices_b)
+        br_res = tuple(br[:n_args_res])
+        sign = (-1) ** br[n_args_res:].count(Branch.BACKWARD)
+        res[br_res].data[:] += sign * einsum(subs,
+                                             a[br_a].data,
+                                             *w,
+                                             b[br_b].data,
+                                             optimize="optimal")
+
+    return res

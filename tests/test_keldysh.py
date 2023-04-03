@@ -17,7 +17,7 @@ from tddt.keldysh import (Branch,
                           lesser,
                           retarded,
                           advanced)
-from tddt.integration import simpsons_weights
+from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
 
 CP = ContourPoint
@@ -30,17 +30,19 @@ class test_keldysh(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.t_max = 6.0
-        cls.n_t = 7
-        cls.t_mesh = MeshReTime(0, cls.t_max, cls.n_t)
-        cls.tt_mesh = MeshProduct(cls.t_mesh, cls.t_mesh)
-        cls.ttt_mesh = MeshProduct(cls.t_mesh, cls.t_mesh, cls.t_mesh)
-        cls.t_points = list(cls.t_mesh)
+        cls.n_t1, cls.n_t2, cls.n_t3 = 7, 8, 9
+        cls.t_mesh1 = MeshReTime(0, cls.t_max, cls.n_t1)
+        cls.t_mesh2 = MeshReTime(0, cls.t_max, cls.n_t2)
+        cls.t_mesh3 = MeshReTime(0, cls.t_max, cls.n_t3)
+        cls.tt_mesh12 = MeshProduct(cls.t_mesh1, cls.t_mesh2)
+        cls.tt_mesh23 = MeshProduct(cls.t_mesh2, cls.t_mesh3)
+        cls.tt_mesh13 = MeshProduct(cls.t_mesh1, cls.t_mesh3)
+        cls.ttt_mesh = MeshProduct(cls.t_mesh1, cls.t_mesh2, cls.t_mesh3)
 
         cls.bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # Square lattice
 
     def test_contour_ordering2(self):
-        t1 = self.t_points[2]
-        t2 = self.t_points[3]
+        t1, t2 = list(self.t_mesh1)[2:4]
 
         data = [
             # (+,+)
@@ -65,9 +67,7 @@ class test_keldysh(unittest.TestCase):
             self.assertEqual(contour_ordering(CP(ba, ta), CP(bb, tb)), order)
 
     def test_contour_ordering3(self):
-        t1 = self.t_points[2]
-        t2 = self.t_points[3]
-        t3 = self.t_points[4]
+        t1, t2, t3 = list(self.t_mesh1)[2:5]
 
         data = [
             # (+,+,+)
@@ -218,7 +218,7 @@ class test_keldysh(unittest.TestCase):
         non_t_shape = tuple(len(m) for m in g.mesh.components[2:]) \
             + g.target_shape
 
-        t = next(iter(self.t_mesh))
+        t = next(iter(self.t_mesh1))
 
         if len(g.mesh.components) == 2:
             g[CP(BW, t), CP(FW, t)] = 3.0
@@ -234,9 +234,9 @@ class test_keldysh(unittest.TestCase):
         assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
                            4.0 * np.ones(non_t_shape))
 
-        g[BW, FW].data[:] = 2 * np.ones((self.n_t, self.n_t, *non_t_shape))
+        g[BW, FW].data[:] = 2 * np.ones((self.n_t1, self.n_t2, *non_t_shape))
         assert_array_equal(g[BW, FW].data,
-                           2 * np.ones((self.n_t, self.n_t, *non_t_shape)))
+                           2 * np.ones((self.n_t1, self.n_t2, *non_t_shape)))
 
         # Multiplication by a scalar
         g *= 3
@@ -296,28 +296,28 @@ class test_keldysh(unittest.TestCase):
             self.assertEqual(g.components[()].data[i], i + 1)
 
     def test_keldysh_gf_n_args1(self):
-        for mesh in (self.t_mesh, MeshProduct(self.t_mesh)):
+        for mesh in (self.t_mesh1, MeshProduct(self.t_mesh1)):
             g = KeldyshGF(mesh=mesh, target_subshapes=((3,),))
 
-            self.assertEqual(g.mesh, MeshProduct(self.t_mesh))
-            self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh))
+            self.assertEqual(g.mesh, MeshProduct(self.t_mesh1))
+            self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh1))
             self.assertEqual(g.non_time_mesh, MeshProduct())
             self.assertEqual(g.n_args, 1)
             self.assertEqual(g.components.shape, (2,))
 
-            t = next(iter(self.t_mesh))
+            t = next(iter(self.t_mesh1))
 
             # __getitem__()
             g.components[1].data[:] = 2.0
             assert_array_equal(g[Branch.BACKWARD].data,
-                               2.0 * np.ones((self.n_t, 3)))
+                               2.0 * np.ones((self.n_t1, 3)))
             g.components[1].data[:] = 3.0
             assert_array_equal(g[Branch.BACKWARD, t],
                                3.0 * np.ones(3))
             # __setitem__()
             g[Branch.FORWARD].data[:] = 4.0
             assert_array_equal(g.components[0].data,
-                               4.0 * np.ones((self.n_t, 3)))
+                               4.0 * np.ones((self.n_t1, 3)))
             g[Branch.FORWARD, t] = 5.0
             assert_array_equal(g.components[0].data[0, :],
                                5.0 * np.ones(3))
@@ -325,25 +325,25 @@ class test_keldysh(unittest.TestCase):
     def test_keldysh_gf_n_args1_bz(self):
         n_k = 10
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
-        mesh = MeshProduct(self.t_mesh, bz_mesh)
+        mesh = MeshProduct(self.t_mesh1, bz_mesh)
         g = KeldyshGF(mesh=mesh, target_subshapes=((3,),))
 
         self.assertEqual(g.mesh, mesh)
-        self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh))
+        self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh1))
         self.assertEqual(g.non_time_mesh, MeshProduct(bz_mesh))
         self.assertEqual(g.n_args, 1)
         self.assertEqual(g.components.shape, (2,))
 
-        t = next(iter(self.t_mesh))
+        t = next(iter(self.t_mesh1))
 
         # __getitem__()
         g.components[1].data[:] = 2.0
         assert_array_equal(g[Branch.BACKWARD].data,
-                           2.0 * np.ones((self.n_t, n_k * n_k, 3)))
+                           2.0 * np.ones((self.n_t1, n_k * n_k, 3)))
         # __setitem__()
         g[Branch.FORWARD].data[:] = 4.0
         assert_array_equal(g.components[0].data,
-                           4.0 * np.ones((self.n_t, n_k * n_k, 3)))
+                           4.0 * np.ones((self.n_t1, n_k * n_k, 3)))
 
         for i, k in enumerate(bz_mesh):
             # __getitem__()
@@ -356,8 +356,8 @@ class test_keldysh(unittest.TestCase):
     def test_keldysh_gf(self):
         for target_shape in ((), (2, 2)):
             # Construct from lesser and greater GF
-            g_l = Gf(mesh=self.tt_mesh, target_shape=target_shape)
-            g_g = Gf(mesh=self.tt_mesh, target_shape=target_shape)
+            g_l = Gf(mesh=self.tt_mesh12, target_shape=target_shape)
+            g_g = Gf(mesh=self.tt_mesh12, target_shape=target_shape)
 
             g_l.data[:] = 2.0
             g_g.data[:] = 3.0
@@ -366,7 +366,7 @@ class test_keldysh(unittest.TestCase):
 
             for i, j in product(range(2), repeat=2):
                 self.assertEqual(g.components[i, j].data.shape,
-                                 (self.n_t, self.n_t) + target_shape)
+                                 (self.n_t1, self.n_t2) + target_shape)
 
             self._test_gf(g)
 
@@ -374,7 +374,7 @@ class test_keldysh(unittest.TestCase):
         n_k = 10
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
 
-        mesh = MeshProduct(*self.tt_mesh.components, bz_mesh)
+        mesh = MeshProduct(*self.tt_mesh12.components, bz_mesh)
 
         for target_shape in ((), (2, 2)):
             # Construct from lesser and greater GF with an extra
@@ -389,12 +389,12 @@ class test_keldysh(unittest.TestCase):
 
             for i, j in product(range(2), repeat=2):
                 self.assertEqual(g.components[i, j].data.shape,
-                                 (self.n_t, self.n_t, n_k**2) + target_shape)
+                                 (self.n_t1, self.n_t2, n_k**2) + target_shape)
 
             self._test_gf(g)
-    """
-    def _make_test_keldysh_gf(self, mesh, x, target_shape=()):
-        g = KeldyshGF(mesh=mesh, target_shape=target_shape)
+
+    def _make_test_keldysh_gf(self, mesh, x, target_subshapes=None):
+        g = KeldyshGF(mesh=mesh, target_subshapes=target_subshapes)
         for n, (b0, b1) in enumerate(product(Branch, repeat=2)):
             g_comp = g[b0, b1]
             s = g_comp.data.size
@@ -402,59 +402,60 @@ class test_keldysh(unittest.TestCase):
         return g
 
     def test_keldysh_gf_convolution(self):
-        w = simpsons_weights(self.t_mesh)
-        dt = self.t_mesh.delta
+        w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
 
         # Scalar-valued GF
-        g1 = self._make_test_keldysh_gf(self.tt_mesh, 1)
-        g2 = self._make_test_keldysh_gf(self.tt_mesh, 2)
+        g1 = self._make_test_keldysh_gf(self.tt_mesh12, 1)
+        g2 = self._make_test_keldysh_gf(self.tt_mesh23, 2)
         conv = g1 @ g2
 
-        conv_ref = KeldyshGF(mesh=self.tt_mesh)
-        for i, k, j in product(range(self.n_t), repeat=3):
+        conv_ref = KeldyshGF(mesh=self.tt_mesh13)
+        for i, k, j in product(*map(range, (self.n_t1, self.n_t2, self.n_t3))):
             conv_ref[FW, FW].data[i, j] += \
                 g1[FW, FW].data[i, k] * w[k] * g2[FW, FW].data[k, j] - \
-                g1[FW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j] * dt
+                g1[FW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j]
             conv_ref[FW, BW].data[i, j] += \
                 g1[FW, FW].data[i, k] * w[k] * g2[FW, BW].data[k, j] - \
-                g1[FW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j] * dt
+                g1[FW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j]
             conv_ref[BW, FW].data[i, j] += \
                 g1[BW, FW].data[i, k] * w[k] * g2[FW, FW].data[k, j] - \
-                g1[BW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j] * dt
+                g1[BW, BW].data[i, k] * w[k] * g2[BW, FW].data[k, j]
             conv_ref[BW, BW].data[i, j] += \
                 g1[BW, FW].data[i, k] * w[k] * g2[FW, BW].data[k, j] - \
-                g1[BW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j] * dt
+                g1[BW, BW].data[i, k] * w[k] * g2[BW, BW].data[k, j]
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
         # Matrix-valued GF
-        g1 = self._make_test_keldysh_gf(self.tt_mesh, 1, (2, 2))
-        g2 = self._make_test_keldysh_gf(self.tt_mesh, 2, (2, 2))
+        g1 = self._make_test_keldysh_gf(self.tt_mesh12, 1, ((2,), (4,)))
+        g2 = self._make_test_keldysh_gf(self.tt_mesh23, 2, ((4,), (1,)))
         conv = g1 @ g2
 
-        conv_ref = KeldyshGF(mesh=self.tt_mesh, target_shape=(2, 2))
-        for i, k, j, m, l, n in product(*[range(self.n_t)] * 3,
-                                        *[range(2)] * 3):
+        conv_ref = KeldyshGF(mesh=self.tt_mesh13, target_subshapes=((2,), (1,)))
+        for i, k, j, m, l, n in product(range(self.n_t1),
+                                        range(self.n_t2),
+                                        range(self.n_t3),
+                                        range(2), range(4), range(1)):
             conv_ref[FW, FW].data[i, j, m, n] += \
                 g1[FW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, l, n] - \
                 g1[FW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, l, n] * dt
+                g2[BW, FW].data[k, j, l, n]
             conv_ref[FW, BW].data[i, j, m, n] += \
                 g1[FW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, l, n] - \
                 g1[FW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, l, n] * dt
+                g2[BW, BW].data[k, j, l, n]
             conv_ref[BW, FW].data[i, j, m, n] += \
                 g1[BW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, l, n] - \
                 g1[BW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, l, n] * dt
+                g2[BW, FW].data[k, j, l, n]
             conv_ref[BW, BW].data[i, j, m, n] += \
                 g1[BW, FW].data[i, k, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, l, n] - \
                 g1[BW, BW].data[i, k, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, l, n] * dt
+                g2[BW, BW].data[k, j, l, n]
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
@@ -463,65 +464,150 @@ class test_keldysh(unittest.TestCase):
         bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])
         n_k = 4
         bz_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k)
-        ttk_mesh = MeshProduct(*self.tt_mesh.components, bz_mesh)
+        ttk_mesh12 = MeshProduct(*self.tt_mesh12.components, bz_mesh)
+        ttk_mesh23 = MeshProduct(*self.tt_mesh23.components, bz_mesh)
+        ttk_mesh13 = MeshProduct(*self.tt_mesh13.components, bz_mesh)
 
-        w = simpsons_weights(self.t_mesh)
-        dt = self.t_mesh.delta
+        w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
 
         # Scalar-valued GF with an extra k-mesh component
-        g1 = self._make_test_keldysh_gf(ttk_mesh, 1)
-        g2 = self._make_test_keldysh_gf(ttk_mesh, 2)
+        g1 = self._make_test_keldysh_gf(ttk_mesh12, 1)
+        g2 = self._make_test_keldysh_gf(ttk_mesh23, 2)
         conv = g1 @ g2
 
-        conv_ref = KeldyshGF(mesh=ttk_mesh)
-        for i, k, j, K in product(*[range(self.n_t)] * 3, range(len(bz_mesh))):
+        conv_ref = KeldyshGF(mesh=ttk_mesh13)
+        for i, k, j, K in product(range(self.n_t1),
+                                  range(self.n_t2),
+                                  range(self.n_t3),
+                                  range(len(bz_mesh))):
             conv_ref[FW, FW].data[i, j, K] += \
                 g1[FW, FW].data[i, k, K] * w[k] * g2[FW, FW].data[k, j, K] - \
-                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K] * dt
+                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K]
             conv_ref[FW, BW].data[i, j, K] += \
                 g1[FW, FW].data[i, k, K] * w[k] * g2[FW, BW].data[k, j, K] - \
-                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K] * dt
+                g1[FW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K]
             conv_ref[BW, FW].data[i, j, K] += \
                 g1[BW, FW].data[i, k, K] * w[k] * g2[FW, FW].data[k, j, K] - \
-                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K] * dt
+                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, FW].data[k, j, K]
             conv_ref[BW, BW].data[i, j, K] += \
                 g1[BW, FW].data[i, k, K] * w[k] * g2[FW, BW].data[k, j, K] - \
-                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K] * dt
+                g1[BW, BW].data[i, k, K] * w[k] * g2[BW, BW].data[k, j, K]
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
         # Matrix-valued GF with an extra k-mesh component
-        g1 = self._make_test_keldysh_gf(ttk_mesh, 1, (2, 2))
-        g2 = self._make_test_keldysh_gf(ttk_mesh, 2, (2, 2))
+        g1 = self._make_test_keldysh_gf(ttk_mesh12, 1, ((2,), (3,)))
+        g2 = self._make_test_keldysh_gf(ttk_mesh23, 2, ((3,), (1,)))
         conv = g1 @ g2
 
-        conv_ref = KeldyshGF(mesh=ttk_mesh, target_shape=(2, 2))
-        for i, k, j, K, m, l, n in product(*[range(self.n_t)] * 3,
+        conv_ref = KeldyshGF(mesh=ttk_mesh13, target_subshapes=((2,), (1,)))
+        for i, k, j, K, m, l, n in product(range(self.n_t1),
+                                           range(self.n_t2),
+                                           range(self.n_t3),
                                            range(len(bz_mesh)),
-                                           *[range(2)] * 3):
+                                           range(2), range(3), range(1)):
             conv_ref[FW, FW].data[i, j, K, m, n] += \
                 g1[FW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, K, l, n] - \
                 g1[FW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, K, l, n] * dt
+                g2[BW, FW].data[k, j, K, l, n]
             conv_ref[FW, BW].data[i, j, K, m, n] += \
                 g1[FW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, K, l, n] - \
                 g1[FW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, K, l, n] * dt
+                g2[BW, BW].data[k, j, K, l, n]
             conv_ref[BW, FW].data[i, j, K, m, n] += \
                 g1[BW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, FW].data[k, j, K, l, n] - \
                 g1[BW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, FW].data[k, j, K, l, n] * dt
+                g2[BW, FW].data[k, j, K, l, n]
             conv_ref[BW, BW].data[i, j, K, m, n] += \
                 g1[BW, FW].data[i, k, K, m, l] * w[k] * \
                 g2[FW, BW].data[k, j, K, l, n] - \
                 g1[BW, BW].data[i, k, K, m, l] * w[k] * \
-                g2[BW, BW].data[k, j, K, l, n] * dt
+                g2[BW, BW].data[k, j, K, l, n]
 
         assert_keldysh_gf_almost_equal(conv, conv_ref)
-    """
+
+    def test_keldysh_gf_convolution_bz1_bz2(self):
+        # Square lattice
+        bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])
+
+        n_k1 = 4
+        bz1_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k1)
+        ttk1_mesh12 = MeshProduct(*self.tt_mesh12.components, bz1_mesh)
+
+        n_k2 = 3
+        bz2_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k2)
+        ttk2_mesh23 = MeshProduct(*self.tt_mesh23.components, bz2_mesh)
+
+        ttk12_mesh13 = MeshProduct(*self.tt_mesh13.components,
+                                   bz1_mesh,
+                                   bz2_mesh)
+
+        w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
+
+        # Scalar-valued GFs with different k-mesh components
+        g1 = self._make_test_keldysh_gf(ttk1_mesh12, 1)
+        g2 = self._make_test_keldysh_gf(ttk2_mesh23, 2)
+        conv = g1 @ g2
+
+        conv_ref = KeldyshGF(mesh=ttk12_mesh13)
+        for i, k, j, K1, K2 in product(range(self.n_t1),
+                                       range(self.n_t2),
+                                       range(self.n_t3),
+                                       range(len(bz1_mesh)),
+                                       range(len(bz2_mesh))):
+            conv_ref[FW, FW].data[i, j, K1, K2] += \
+                g1[FW, FW].data[i, k, K1] * w[k] * g2[FW, FW].data[k, j, K2] - \
+                g1[FW, BW].data[i, k, K1] * w[k] * g2[BW, FW].data[k, j, K2]
+            conv_ref[FW, BW].data[i, j, K1, K2] += \
+                g1[FW, FW].data[i, k, K1] * w[k] * g2[FW, BW].data[k, j, K2] - \
+                g1[FW, BW].data[i, k, K1] * w[k] * g2[BW, BW].data[k, j, K2]
+            conv_ref[BW, FW].data[i, j, K1, K2] += \
+                g1[BW, FW].data[i, k, K1] * w[k] * g2[FW, FW].data[k, j, K2] - \
+                g1[BW, BW].data[i, k, K1] * w[k] * g2[BW, FW].data[k, j, K2]
+            conv_ref[BW, BW].data[i, j, K1, K2] += \
+                g1[BW, FW].data[i, k, K1] * w[k] * g2[FW, BW].data[k, j, K2] - \
+                g1[BW, BW].data[i, k, K1] * w[k] * g2[BW, BW].data[k, j, K2]
+
+        assert_keldysh_gf_almost_equal(conv, conv_ref)
+
+        # Matrix-valued GFs with different k-mesh components
+        g1 = self._make_test_keldysh_gf(ttk1_mesh12, 1, ((2,), (3,)))
+        g2 = self._make_test_keldysh_gf(ttk2_mesh23, 2, ((3,), (1,)))
+        conv = g1 @ g2
+
+        conv_ref = KeldyshGF(mesh=ttk12_mesh13, target_subshapes=((2,), (1,)))
+        for i, k, j, K1, K2, m, l, n in product(range(self.n_t1),
+                                                range(self.n_t2),
+                                                range(self.n_t3),
+                                                range(len(bz1_mesh)),
+                                                range(len(bz2_mesh)),
+                                                range(2), range(3), range(1)):
+            conv_ref[FW, FW].data[i, j, K1, K2, m, n] += \
+                g1[FW, FW].data[i, k, K1, m, l] * w[k] * \
+                g2[FW, FW].data[k, j, K2, l, n] - \
+                g1[FW, BW].data[i, k, K1, m, l] * w[k] * \
+                g2[BW, FW].data[k, j, K2, l, n]
+            conv_ref[FW, BW].data[i, j, K1, K2, m, n] += \
+                g1[FW, FW].data[i, k, K1, m, l] * w[k] * \
+                g2[FW, BW].data[k, j, K2, l, n] - \
+                g1[FW, BW].data[i, k, K1, m, l] * w[k] * \
+                g2[BW, BW].data[k, j, K2, l, n]
+            conv_ref[BW, FW].data[i, j, K1, K2, m, n] += \
+                g1[BW, FW].data[i, k, K1, m, l] * w[k] * \
+                g2[FW, FW].data[k, j, K2, l, n] - \
+                g1[BW, BW].data[i, k, K1, m, l] * w[k] * \
+                g2[BW, FW].data[k, j, K2, l, n]
+            conv_ref[BW, BW].data[i, j, K1, K2, m, n] += \
+                g1[BW, FW].data[i, k, K1, m, l] * w[k] * \
+                g2[FW, BW].data[k, j, K2, l, n] - \
+                g1[BW, BW].data[i, k, K1, m, l] * w[k] * \
+                g2[BW, BW].data[k, j, K2, l, n]
+
+        assert_keldysh_gf_almost_equal(conv, conv_ref)
+
     def test_keldysh_vertex3(self):
 
         def make_time_piece(x):
@@ -541,12 +627,12 @@ class test_keldysh(unittest.TestCase):
                 self.assertNotEqual(Lambda[CP(a0, t0), CP(a1, t1), CP(a2, t2)],
                                     0)
 
-        t = next(iter(self.t_mesh))
+        t = next(iter(self.t_mesh1))
 
         Lambda[CP(BW, t), CP(FW, t), CP(BW, t)] = 3.0
         self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 3.0)
 
-        ones_time_mat = np.ones((self.n_t, self.n_t, self.n_t))
+        ones_time_mat = np.ones((self.n_t1, self.n_t2, self.n_t3))
         Lambda[BW, FW, BW].data[:] = 2 * ones_time_mat
         assert_array_equal(Lambda[BW, FW, BW].data, 2 * ones_time_mat)
 
