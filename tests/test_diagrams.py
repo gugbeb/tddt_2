@@ -6,7 +6,9 @@ from triqs.gf import MeshReTime, MeshProduct, MeshBrillouinZone
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF
-from tddt.diagrams import polarization_2nd_order
+from tddt.diagrams import (polarization_2nd_order,
+                           selfenergy_2nd_order,
+                           selfenergy_2nd_order_hf)
 from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
 
@@ -53,7 +55,7 @@ class test_diagrams(unittest.TestCase):
         Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
         Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
         g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
-        g = self._make_test_keldysh_gf(g_mesh, 1.0)
+        g = self._make_test_keldysh_gf(g_mesh, 2.0)
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
@@ -77,7 +79,7 @@ class test_diagrams(unittest.TestCase):
                                                  1.0,
                                                  ((1,), (1,), (3,)))
         g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
-        g = self._make_test_keldysh_gf(g_mesh, 1.0, ((1,), (1,)))
+        g = self._make_test_keldysh_gf(g_mesh, 2.0, ((1,), (1,)))
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
@@ -105,7 +107,7 @@ class test_diagrams(unittest.TestCase):
         Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
         Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
         g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
-        g = self._make_test_keldysh_gf(g_mesh, 1.0)
+        g = self._make_test_keldysh_gf(g_mesh, 2.0)
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
@@ -134,7 +136,7 @@ class test_diagrams(unittest.TestCase):
                                                  1.0,
                                                  ((1,), (1,), (3,)))
         g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
-        g = self._make_test_keldysh_gf(g_mesh, 1.0, ((1,), (1,)))
+        g = self._make_test_keldysh_gf(g_mesh, 2.0, ((1,), (1,)))
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
@@ -159,6 +161,250 @@ class test_diagrams(unittest.TestCase):
                     Lambda[b4, b5, b1].data[m, n, j, w3, w4, y]
 
         assert_keldysh_gf_almost_equal(pi, pi_ref)
+
+    def test_selfenergy_2nd_order_scalar(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
+        g = self._make_test_keldysh_gf(g_mesh, 2.0)
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1])
+        w = self._make_test_keldysh_gf(w_mesh, 3.0)
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0], self.t_mesh[0]))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n in product(*[self.t_ranges[0]] * 4,
+                                            *[self.t_ranges[1]] * 2):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j] += 1j * sign * \
+                    Lambda[b0, b2, b4].data[i, k, m] * g[b2, b3].data[k, l] * \
+                    W0[k] * W0[l] * W1[m] * W1[n] * \
+                    w[b4, b5].data[m, n] * Lambda[b3, b1, b5].data[l, j, n]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+
+    def test_selfenergy_2nd_order_matrix(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh,
+                                                 1.0,
+                                                 ((1,), (1,), (3,)))
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
+        g = self._make_test_keldysh_gf(g_mesh, 1.0, ((1,), (1,)))
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1])
+        w = self._make_test_keldysh_gf(w_mesh, 3.0, ((3,), (3,)))
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
+                                               self.t_mesh[0]),
+                              target_subshapes=((1,), (1,)))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n, x, y, w1, w2, w3, w4 in \
+                product(*[self.t_ranges[0]] * 4,
+                        *[self.t_ranges[1]] * 2,
+                        *[range(1)] * 4, *[range(3)] * 2):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j, x, y] += 1j * sign * \
+                    Lambda[b0, b2, b4].data[i, k, m, x, w2, w4] * \
+                    g[b2, b3].data[k, l, w1, w2] * \
+                    W0[k] * W0[l] * W1[m] * W1[n] * \
+                    w[b4, b5].data[m, n, w3, w4] * \
+                    Lambda[b3, b1, b5].data[l, j, n, w2, y, w4]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+
+    def test_selfenergy_2nd_order_scalar_bz(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
+        g = self._make_test_keldysh_gf(g_mesh, 2.0)
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1], self.bz_mesh)
+        w = self._make_test_keldysh_gf(w_mesh, 3.0)
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
+                                               self.t_mesh[0],
+                                               self.bz_mesh))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n, K in product(*[self.t_ranges[0]] * 4,
+                                               *[self.t_ranges[1]] * 2,
+                                               range(self.n_k)):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j, K] += 1j * sign * \
+                    Lambda[b0, b2, b4].data[i, k, m] * \
+                    g[b2, b3].data[k, l, K] * \
+                    W0[k] * W0[l] * W1[m] * W1[n] * \
+                    w[b4, b5].data[m, n, K] * \
+                    Lambda[b3, b1, b5].data[l, j, n]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+
+    def test_selfenergy_2nd_order_matrix_bz(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh,
+                                                 1.0,
+                                                 ((1,), (1,), (3,)))
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
+        g = self._make_test_keldysh_gf(g_mesh, 2.0, ((1,), (1,)))
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1], self.bz_mesh)
+        w = self._make_test_keldysh_gf(w_mesh, 3.0, ((3,), (3,)))
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
+                                               self.t_mesh[0],
+                                               self.bz_mesh),
+                              target_subshapes=((1,), (1,)))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n, K, x, y, w1, w2, w3, w4 in \
+                product(*[self.t_ranges[0]] * 4,
+                        *[self.t_ranges[1]] * 2,
+                        range(self.n_k),
+                        *[range(1)] * 4, *[range(3)] * 2):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j, K, x, y] += 1j * sign * \
+                    Lambda[b0, b2, b4].data[i, k, m, x, w2, w4] * \
+                    g[b2, b3].data[k, l, K, w1, w2] * \
+                    W0[k] * W0[l] * W1[m] * W1[n] * \
+                    w[b4, b5].data[m, n, K, w3, w4] * \
+                    Lambda[b3, b1, b5].data[l, j, n, w2, y, w4]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref, rtol=1e-6)
+
+    def test_selfenergy_2nd_order_hf_scalar(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
+        g = self._make_test_keldysh_gf(g_mesh, 2.0)
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1])
+        w = self._make_test_keldysh_gf(w_mesh, 3.0)
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0], self.t_mesh[0]))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n in product(*[self.t_ranges[0]] * 4,
+                                            *[self.t_ranges[1]] * 2):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j] += -1j * sign * \
+                    Lambda[b0, b1, b4].data[i, j, m] * \
+                    W1[m] * w[b4, b5].data[m, n] * W1[n] * \
+                    Lambda[b2, b3, b5].data[k, l, n] * W0[k] * W0[l] * \
+                    g[b3, b2].data[l, k]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+
+    def test_selfenergy_2nd_order_hf_matrix(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh,
+                                                 1.0,
+                                                 ((1,), (1,), (3,)))
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
+        g = self._make_test_keldysh_gf(g_mesh, 1.0, ((1,), (1,)))
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1])
+        w = self._make_test_keldysh_gf(w_mesh, 3.0, ((3,), (3,)))
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
+                                               self.t_mesh[0]),
+                              target_subshapes=((1,), (1,)))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n, x, y, w1, w2, w3, w4 in \
+                product(*[self.t_ranges[0]] * 4,
+                        *[self.t_ranges[1]] * 2,
+                        *[range(1)] * 4, *[range(3)] * 2):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j, x, y] += -1j * sign * \
+                    Lambda[b0, b1, b4].data[i, j, m, x, y, w3] * \
+                    W1[m] * w[b4, b5].data[m, n, w3, w4] * W1[n] * \
+                    Lambda[b2, b3, b5].data[k, l, n, w1, w2, w4] * \
+                    W0[k] * W0[l] * g[b3, b2].data[l, k, w2, w1]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+
+    def test_selfenergy_2nd_order_hf_scalar_bz(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh, 1.0)
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
+        g = self._make_test_keldysh_gf(g_mesh, 2.0)
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1])
+        w = self._make_test_keldysh_gf(w_mesh, 3.0)
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
+                                               self.t_mesh[0],
+                                               self.bz_mesh))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n, K in product(*[self.t_ranges[0]] * 4,
+                                               *[self.t_ranges[1]] * 2,
+                                               range(self.n_k)):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j, K] += -1j * sign * \
+                    Lambda[b0, b1, b4].data[i, j, m] * \
+                    W1[m] * w[b4, b5].data[m, n] * W1[n] * \
+                    Lambda[b2, b3, b5].data[k, l, n] * W0[k] * W0[l] * \
+                    g[b3, b2].data[l, k, K]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+
+    def test_selfenergy_2nd_order_hf_matrix_bz(self):
+        Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
+        Lambda = self._make_test_keldysh_vertex3(Lambda_mesh,
+                                                 1.0,
+                                                 ((1,), (1,), (3,)))
+        g_mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0], self.bz_mesh)
+        g = self._make_test_keldysh_gf(g_mesh, 1.0, ((1,), (1,)))
+        w_mesh = MeshProduct(self.t_mesh[1], self.t_mesh[1])
+        w = self._make_test_keldysh_gf(w_mesh, 3.0, ((3,), (3,)))
+
+        W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
+        W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
+
+        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+
+        sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
+                                               self.t_mesh[0],
+                                               self.bz_mesh),
+                              target_subshapes=((1,), (1,)))
+        for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
+            for i, j, k, l, m, n, K, x, y, w1, w2, w3, w4 in \
+                product(*[self.t_ranges[0]] * 4,
+                        *[self.t_ranges[1]] * 2,
+                        range(self.n_k),
+                        *[range(1)] * 4, *[range(3)] * 2):
+                sign = (-1) ** (b2, b3, b4, b5).count(BW)
+                sigma_ref[b0, b1].data[i, j, K, x, y] += -1j * sign * \
+                    Lambda[b0, b1, b4].data[i, j, m, x, y, w3] * \
+                    W1[m] * w[b4, b5].data[m, n, w3, w4] * W1[n] * \
+                    Lambda[b2, b3, b5].data[k, l, n, w1, w2, w4] * \
+                    W0[k] * W0[l] * g[b3, b2].data[l, k, K, w2, w1]
+
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
 
 
 if __name__ == '__main__':
