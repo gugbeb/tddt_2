@@ -64,6 +64,7 @@ class KeldyshGF:
 
     def __init__(self, *,
                  mesh: Union[MeshReTime, MeshProduct],
+                 target_shape: Tuple[int, ...] = None,
                  target_subshapes: Tuple[Tuple[int, ...], ...] = None):
 
         #
@@ -100,15 +101,31 @@ class KeldyshGF:
         #
 
         # All subshapes are 0-dimensional by default
-        if target_subshapes is None:
+        if (target_shape is None) and (target_subshapes is None):
             self.target_subshapes = ((),) * self.n_args
             self.target_shape = ()
-        else:
+
+        elif (target_shape is None) and (target_subshapes is not None):
             assert len(target_subshapes) == self.n_args, \
                 f"target_subshapes must contain {self.n_args} elements for " \
                 f"a {self.n_args}-point function"
             self.target_subshapes = tuple(target_subshapes)
             self.target_shape = sum(target_subshapes, ())
+
+        elif (target_shape is not None) and (target_subshapes is None):
+            assert len(target_shape) % self.n_args == 0, \
+                f"Target shape must have a multiple of {self.n_args} elements"
+            self.target_shape = tuple(target_shape)
+            tss_len = len(self.target_shape) // self.n_args
+            self.target_subshapes = tuple(
+                self.target_shape[i:i + tss_len]
+                for i in range(0, len(self.target_shape), tss_len)
+            )
+
+        else:
+            raise RuntimeError(
+                "target_shape and target_subshapes are mutually exclusive"
+            )
 
         #
         # Allocate data storage
