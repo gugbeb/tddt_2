@@ -16,7 +16,9 @@ from tddt.keldysh import (Branch,
                           greater,
                           lesser,
                           retarded,
-                          advanced)
+                          advanced,
+                          ret2adv,
+                          adv2ret)
 from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
 
@@ -393,6 +395,55 @@ class test_keldysh(unittest.TestCase):
 
             self._test_gf(g)
 
+    def test_ret2adv(self):
+        n_k = 3
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+
+        mesh = MeshProduct(self.t_mesh1, self.t_mesh2)
+
+        # Scalar-valued GF
+        g_ret = Gf(mesh=mesh, target_shape=())
+        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2) \
+            .reshape((self.n_t1, self.n_t2))
+        g_adv = ret2adv(g_ret)
+        for t1, t2 in g_adv.mesh:
+            self.assertEqual(g_adv[t1, t2], np.conj(g_ret[t2, t1]))
+
+        # Matrix-valued GF
+        g_ret = Gf(mesh=mesh, target_shape=(2, 3))
+        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2 * 6) \
+            .reshape((self.n_t1, self.n_t2, 2, 3))
+        g_adv = ret2adv(g_ret)
+        for (t1, t2), i, j in product(g_adv.mesh, range(3), range(2)):
+            self.assertEqual(g_adv[t1, t2][i, j], np.conj(g_ret[t2, t1][j, i]))
+
+        # Matrix-valued GF with an extra mesh component
+        mesh = MeshProduct(self.t_mesh1, self.t_mesh2, bz_mesh)
+        g_ret = Gf(mesh=mesh, target_shape=(2, 3))
+        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2 * 6 * n_k ** 2) \
+            .reshape((self.n_t1, self.n_t2, n_k ** 2, 2, 3))
+        g_adv = ret2adv(g_ret)
+        for (t1, t2, K), i, j in product(g_adv.mesh, range(3), range(2)):
+            self.assertEqual(g_adv[t1, t2, K][i, j],
+                             np.conj(g_ret[t2, t1, K][j, i]))
+
+        # Tensor-valued GF with an extra mesh component
+        g_ret = Gf(mesh=mesh, target_shape=(2, 3, 4))
+        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2 * 24 * n_k ** 2) \
+            .reshape((self.n_t1, self.n_t2, n_k ** 2, 2, 3, 4))
+        g_adv = ret2adv(g_ret, n_left_indices=2)
+        for (t1, t2, K), i, j, k in product(g_adv.mesh,
+                                            range(4),
+                                            range(2),
+                                            range(3)):
+            self.assertEqual(g_adv[t1, t2, K][i, j, k],
+                             np.conj(g_ret[t2, t1, K][j, k, i]))
+
+        g_ret2 = adv2ret(g_adv, n_left_indices=1)
+        self.assertEqual(g_ret2.mesh, g_ret.mesh)
+        self.assertEqual(g_ret2.target_shape, g_ret.target_shape)
+        assert_array_equal(g_ret2.data, g_ret.data)
+
     def _make_test_keldysh_gf(self, mesh, x, target_subshapes=None):
         g = KeldyshGF(mesh=mesh, target_subshapes=target_subshapes)
         for n, (b0, b1) in enumerate(product(Branch, repeat=2)):
@@ -460,10 +511,8 @@ class test_keldysh(unittest.TestCase):
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
     def test_keldysh_gf_convolution_bz(self):
-        # Square lattice
-        bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])
         n_k = 4
-        bz_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k)
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
         ttk_mesh12 = MeshProduct(*self.tt_mesh12.components, bz_mesh)
         ttk_mesh23 = MeshProduct(*self.tt_mesh23.components, bz_mesh)
         ttk_mesh13 = MeshProduct(*self.tt_mesh13.components, bz_mesh)
@@ -530,15 +579,12 @@ class test_keldysh(unittest.TestCase):
         assert_keldysh_gf_almost_equal(conv, conv_ref)
 
     def test_keldysh_gf_convolution_bz1_bz2(self):
-        # Square lattice
-        bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])
-
         n_k1 = 4
-        bz1_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k1)
+        bz1_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k1)
         ttk1_mesh12 = MeshProduct(*self.tt_mesh12.components, bz1_mesh)
 
         n_k2 = 3
-        bz2_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k2)
+        bz2_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k2)
         ttk2_mesh23 = MeshProduct(*self.tt_mesh23.components, bz2_mesh)
 
         ttk12_mesh13 = MeshProduct(*self.tt_mesh13.components,

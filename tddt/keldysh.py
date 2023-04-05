@@ -6,8 +6,8 @@ from enum import Enum
 from copy import deepcopy
 from itertools import product, takewhile, islice
 from typing import Tuple, Dict, Union, Sequence
-from numpy import array, tril_indices, triu_indices, einsum
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
+import numpy as np
 
 from .util import subscripts
 from .integration import GregoryIntegrator
@@ -131,7 +131,7 @@ class KeldyshGF:
         # Allocate data storage
         #
 
-        self.components = array(
+        self.components = np.array(
             [Gf(mesh=self.mesh, target_shape=self.target_shape)
              for _ in range(2 ** self.n_args)]
         ).reshape((2,) * self.n_args)
@@ -266,9 +266,9 @@ def retarded(g: KeldyshGF) -> Gf:
     g_g = g[Branch.BACKWARD, Branch.FORWARD]
     g_l = g[Branch.FORWARD, Branch.BACKWARD]
     g_ret = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    tril_idx = tril_indices(len(g.time_mesh.components[0]),
-                            0,
-                            len(g.time_mesh.components[1]))
+    tril_idx = np.tril_indices(len(g.time_mesh.components[0]),
+                               0,
+                               len(g.time_mesh.components[1]))
     g_ret.data[tril_idx] = g_g.data[tril_idx] - g_l.data[tril_idx]
     return g_ret
 
@@ -279,11 +279,50 @@ def advanced(g: KeldyshGF) -> Gf:
     g_g = g[Branch.BACKWARD, Branch.FORWARD]
     g_l = g[Branch.FORWARD, Branch.BACKWARD]
     g_adv = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    triu_idx = triu_indices(len(g.time_mesh.components[0]),
-                            0,
-                            len(g.time_mesh.components[1]))
+    triu_idx = np.triu_indices(len(g.time_mesh.components[0]),
+                               0,
+                               len(g.time_mesh.components[1]))
     g_adv.data[triu_idx] = g_l.data[triu_idx] - g_g.data[triu_idx]
     return g_adv
+
+
+def ret2adv(g_ret: Gf, *, n_left_indices=None) -> Gf:
+    r"""Build an advanced GF out of a retarded GF"""
+
+    #
+    # Based on Martin Eckstein's thesis, Eq. 2.15a
+    #
+
+    assert len(g_ret.mesh.components) >= 2
+    assert isinstance(g_ret.mesh.components[0], MeshReTime)
+    assert isinstance(g_ret.mesh.components[1], MeshReTime)
+
+    mesh = MeshProduct(g_ret.mesh.components[1],
+                       g_ret.mesh.components[0],
+                       *g_ret.mesh.components[2:])
+
+    if n_left_indices is None:
+        assert len(g_ret.target_shape) % 2 == 0, \
+            "n_left_indices must be provided when the target shape of the GF " \
+            "has an odd number of dimensions"
+        nli = len(g_ret.target_shape) // 2
+    else:
+        nli = n_left_indices
+
+    nri = len(g_ret.target_shape) - nli
+    ts = g_ret.target_shape[nli:] + g_ret.target_shape[:nli]
+
+    g_adv = Gf(mesh=mesh, target_shape=ts)
+    axes_from = [0, 1, *range(-1, - nri - 1, -1)]
+    axes_to = [1, 0, *range(-1 - nli, - nri - nli - 1, -1)]
+    g_adv.data[:] = np.conj(np.moveaxis(g_ret.data, axes_from, axes_to))
+
+    return g_adv
+
+
+def adv2ret(g_adv: Gf, *, n_left_indices=None) -> Gf:
+    r"""Build a retarded GF out of an advanced GF"""
+    return ret2adv(g_adv, n_left_indices=n_left_indices)
 
 
 def from_lesser_greater(g_l: Gf, g_g: Gf, n_left_target_axes=None) -> KeldyshGF:
@@ -595,10 +634,10 @@ def conv(a: KeldyshGF,  # noqa: C901
         br_b = tuple(br[i] for i in arg_indices_b)
         br_res = tuple(br[:n_args_res])
         sign = (-1) ** br[n_args_res:].count(Branch.BACKWARD)
-        res[br_res].data[:] += sign * einsum(subs,
-                                             a[br_a].data,
-                                             *w,
-                                             b[br_b].data,
-                                             optimize="optimal")
+        res[br_res].data[:] += sign * np.einsum(subs,
+                                                a[br_a].data,
+                                                *w,
+                                                b[br_b].data,
+                                                optimize="optimal")
 
     return res
