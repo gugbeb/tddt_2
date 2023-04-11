@@ -273,6 +273,18 @@ def retarded(g: KeldyshGF) -> Gf:
     return g_ret
 
 
+def retarded_mod(g: KeldyshGF) -> Gf:
+    r"""Returns the modified retarded component of a 2-point Keldysh
+    Green's function. The modified version does not contain the time
+    step-function in its definition."""
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+    g_g = g[Branch.BACKWARD, Branch.FORWARD]
+    g_l = g[Branch.FORWARD, Branch.BACKWARD]
+    g_ret = Gf(mesh=g.mesh, target_shape=g.target_shape)
+    g_ret.data[...] = g_g.data - g_l.data
+    return g_ret
+
+
 def advanced(g: KeldyshGF) -> Gf:
     r"""Returns the advanced component of a 2-point Keldysh Green's function"""
     assert g.n_args == 2, "g must be a 2-point Green's function"
