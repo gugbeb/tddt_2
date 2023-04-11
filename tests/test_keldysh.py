@@ -2,6 +2,7 @@ import unittest
 from numpy.testing import assert_array_equal, assert_array_almost_equal
 from itertools import product
 import numpy as np
+from scipy.linalg import expm
 
 from triqs.gf import MeshReTime, GfReTime, MeshBrillouinZone, MeshProduct, Gf
 from triqs.gf.descriptors import Function
@@ -19,9 +20,11 @@ from tddt.keldysh import (Branch,
                           advanced,
                           retarded_mod,
                           ret2adv,
-                          adv2ret)
+                          adv2ret,
+                          is_hermitian)
 from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
+
 
 CP = ContourPoint
 FW, BW = Branch.FORWARD, Branch.BACKWARD
@@ -448,6 +451,50 @@ class test_keldysh(unittest.TestCase):
         self.assertEqual(g_ret2.mesh, g_ret.mesh)
         self.assertEqual(g_ret2.target_shape, g_ret.target_shape)
         assert_array_equal(g_ret2.data, g_ret.data)
+
+    def test_is_hermitian(self):
+        mesh = MeshProduct(self.t_mesh1, self.t_mesh1)
+
+        # Scalar-valued GF
+        g_l = Gf(mesh=mesh, target_shape=())
+        g_g = Gf(mesh=mesh, target_shape=())
+
+        for t1, t2 in mesh:
+            e = np.exp(-1j * 2.0 * (t1.value - t2.value))
+            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
+            g_l[t1, t2] = -1j * -0.1 * e
+        g = from_lesser_greater(g_l, g_g)
+        self.assertTrue(is_hermitian(g))
+
+        # Matrix-valued GF
+        h_mat = np.array([[1.0, 0.5j], [-0.5j, 2.0]])
+
+        g_l = Gf(mesh=mesh, target_shape=(2, 2))
+        g_g = Gf(mesh=mesh, target_shape=(2, 2))
+
+        for t1, t2 in mesh:
+            e = expm(-1j * h_mat * (t1.value - t2.value))
+            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
+            g_l[t1, t2] = -1j * -0.1 * e
+        g = from_lesser_greater(g_l, g_g)
+        self.assertTrue(is_hermitian(g))
+
+        # Matrix-valued GF with an extra k-mesh component
+        n_k = 4
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        mesh = MeshProduct(self.t_mesh1, self.t_mesh1, bz_mesh)
+
+        g_l = Gf(mesh=mesh, target_shape=(2, 2))
+        g_g = Gf(mesh=mesh, target_shape=(2, 2))
+        for k in bz_mesh:
+            eps = np.sum(k.value)
+            h_mat = np.array([[eps, 0.5j], [-0.5j, 2.0 * eps]])
+            for t1, t2 in MeshProduct(self.t_mesh1, self.t_mesh1):
+                e = expm(-1j * h_mat * (t1.value - t2.value))
+                g_g[t1, t2, k] = -1j * (1.0 - 0.1) * e
+                g_l[t1, t2, k] = -1j * -0.1 * e
+        g = from_lesser_greater(g_l, g_g)
+        self.assertTrue(is_hermitian(g))
 
     def _make_test_keldysh_gf(self, mesh, x, target_subshapes=None):
         g = KeldyshGF(mesh=mesh, target_subshapes=target_subshapes)

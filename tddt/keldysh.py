@@ -337,6 +337,34 @@ def adv2ret(g_adv: Gf, *, n_left_indices=None) -> Gf:
     return ret2adv(g_adv, n_left_indices=n_left_indices)
 
 
+def is_hermitian(g: KeldyshGF, *, atol=.0) -> bool:
+    r"""Checks if a 2-point Keldysh Green's function is hermitian in the sense
+    of the NESSi paper"""
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+
+    if g.time_mesh.components[0] != g.time_mesh.components[1]:
+        return False
+    if g.target_subshapes[0] != g.target_subshapes[1]:
+        return False
+
+    nli = len(g.target_subshapes[0])
+
+    axes_from = [0, 1, *range(-1, - nli - 1, -1)]
+    axes_to = [1, 0, *range(-1 - nli, -2 * nli - 1, -1)]
+
+    g_g = greater(g)
+    g_l = lesser(g)
+    g_ret_mod = retarded_mod(g)
+
+    for comp in (g_g, g_l, g_ret_mod):
+        if not np.allclose(comp.data,
+                           -np.conj(np.moveaxis(comp.data, axes_from, axes_to)),
+                           atol=atol):
+            return False
+
+    return True
+
+
 def from_lesser_greater(g_l: Gf, g_g: Gf, n_left_target_axes=None) -> KeldyshGF:
     r"""
     Construct a 2-point KeldyshGF object from a pair of lesser and greater
