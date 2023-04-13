@@ -47,28 +47,30 @@ class GregoryIntegrator:
     def __init__(self, order):
         self.order = order
 
-        self.s = self.starting_weights(order)
+        self.I = self.poly_integral_coeffs(order)  # noqa: E741
+        self.s = self.I[0, :, :]
         self.B = self.boundary_correction_weights(order)
 
     @classmethod
-    def starting_weights(cls, k):
+    def poly_integral_coeffs(cls, k):
         r"""
-        Computes the (k+1)x(k+1) matrix of starting weights s^{(k)}_{n,j}.
+        Computes the (k+1)x(k+1)x(k+1) tensor of polynomial integration
+        coefficients I^{(k)}_{m,n,l}.
         """
         assert k >= 0
-        stencil_size = k + 1
+        k_range = range(k + 1)
 
         # Vandermonde matrix j^a, j=0,...,k, a=0,...,k
-        M = np.vander(range(stencil_size), increasing=True)
+        M = np.vander(k_range, increasing=True)
 
         # Coefficients of k-th polynomial interpolation P^{(k)}_{a,l}
         P_k = np.linalg.inv(M)
 
-        # Matrix of intergration operator
-        int_op = M * [1 / (n + 1) for n in range(stencil_size)]
-        int_op = (int_op.T * range(stencil_size)).T
+        # Matrix of the integration operator
+        m, n, a = np.meshgrid(k_range, k_range, k_range, indexing='ij')
+        int_op = (n ** (a + 1) - m ** (a + 1)) / (a + 1)
 
-        return int_op @ P_k
+        return np.tensordot(int_op, P_k, axes=1)
 
     @classmethod
     def boundary_correction_weights(cls, k):

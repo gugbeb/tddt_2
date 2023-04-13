@@ -1,4 +1,5 @@
 import unittest
+from itertools import product
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 
@@ -41,14 +42,26 @@ class test_integration(unittest.TestCase):
         return np.block([[s_ref, np.zeros((b_size, size - b_size))],
                          [b_ll, b_lr]]) * self.mesh.delta
 
+    def _make_I_ref(self, k):
+        M = np.empty((k + 1, k + 1))
+        for j, a in product(range(k + 1), repeat=2):
+            M[j, a] = j ** a
+        P_k = np.linalg.inv(M)
+        res = np.zeros((k + 1, k + 1, k + 1))
+        for m, n, l, a in product(range(k + 1), repeat=4):
+            res[m, n, l] += P_k[a, l] * (n ** (a + 1) - m ** (a + 1)) / (a + 1)
+        return res
+
     def test_GregoryIntegrator0(self):
         g = GregoryIntegrator(0)
         self.assertEqual(g.order, 0)
 
         s_ref = np.array([[0]])
         assert_array_almost_equal(g.s, s_ref)
-        Sigma_ref = np.array([[0.5]])
+        I_ref = np.array([[[0]]])
+        assert_array_almost_equal(g.I, I_ref)
 
+        Sigma_ref = np.array([[0.5]])
         w_ref = self._make_gregory_w_ref(s_ref, Sigma_ref)
         w = g.weights(self.mesh)
         assert_array_almost_equal(w, w_ref)
@@ -63,9 +76,11 @@ class test_integration(unittest.TestCase):
         s_ref = np.array([[0, 0],
                           [0.5, 0.5]])
         assert_array_almost_equal(g.s, s_ref)
+        I_ref = self._make_I_ref(1)
+        assert_array_almost_equal(g.I, I_ref)
+
         Sigma_ref = np.array([[5 / 12, 7 / 6],
                               [5 / 12, 13 / 12]])
-
         w_ref = self._make_gregory_w_ref(s_ref, Sigma_ref)
         w = g.weights(self.mesh)
         assert_array_almost_equal(w, w_ref)
@@ -81,10 +96,12 @@ class test_integration(unittest.TestCase):
                           [5 / 12, 2 / 3, -1 / 12],
                           [1 / 3, 4 / 3, 1 / 3]])
         assert_array_almost_equal(g.s, s_ref)
+        I_ref = self._make_I_ref(2)
+        assert_array_almost_equal(g.I, I_ref)
+
         Sigma_ref = np.array([[3 / 8, 9 / 8, 9 / 8],
                               [3 / 8, 7 / 6, 11 / 12],
                               [3 / 8, 7 / 6, 23 / 24]])
-
         w_ref = self._make_gregory_w_ref(s_ref, Sigma_ref)
         w = g.weights(self.mesh)
         assert_array_almost_equal(w, w_ref)
@@ -101,11 +118,13 @@ class test_integration(unittest.TestCase):
                           [1 / 3, 4 / 3, 1 / 3, 0],
                           [3 / 8, 9 / 8, 9 / 8, 3 / 8]])
         assert_array_almost_equal(g.s, s_ref)
+        I_ref = self._make_I_ref(3)
+        assert_array_almost_equal(g.I, I_ref)
+
         Sigma_ref = np.array([[251 / 720, 229 / 180, 91 / 120, 229 / 180],
                               [251 / 720, 299 / 240, 163 / 180, 163 / 180],
                               [251 / 720, 299 / 240, 211 / 240, 379 / 360],
                               [251 / 720, 299 / 240, 211 / 240, 739 / 720]])
-
         w_ref = self._make_gregory_w_ref(s_ref, Sigma_ref)
         w = g.weights(self.mesh)
         assert_array_almost_equal(w, w_ref)
@@ -125,6 +144,9 @@ class test_integration(unittest.TestCase):
             [14 / 45, 64 / 45, 8 / 15, 64 / 45, 14 / 45]
         ])
         assert_array_almost_equal(g.s, s_ref)
+        I_ref = self._make_I_ref(4)
+        assert_array_almost_equal(g.I, I_ref)
+
         Sigma_ref = np.array([
             [95 / 288, 125 / 96, 125 / 144, 125 / 144, 125 / 96],
             [95 / 288, 317 / 240, 359 / 480, 433 / 360, 359 / 480],
@@ -132,7 +154,6 @@ class test_integration(unittest.TestCase):
             [95 / 288, 317 / 240, 23 / 30, 793 / 720, 77 / 80],
             [95 / 288, 317 / 240, 23 / 30, 793 / 720, 157 / 160]
         ])
-
         w_ref = self._make_gregory_w_ref(s_ref, Sigma_ref)
         w = g.weights(self.mesh)
         assert_array_almost_equal(w, w_ref)
@@ -154,6 +175,9 @@ class test_integration(unittest.TestCase):
             [95 / 288, 125 / 96, 125 / 144, 125 / 144, 125 / 96, 95 / 288]
         ])
         assert_array_almost_equal(g.s, s_ref)
+        I_ref = self._make_I_ref(5)
+        assert_array_almost_equal(g.I, I_ref)
+
         Sigma_ref = np.array([
             [19087 / 60480, 14177 / 10080, 10763 / 20160, 22501 / 15120,
              10763 / 20160, 14177 / 10080],
