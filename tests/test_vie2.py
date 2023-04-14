@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from numpy import sqrt, sin, sinh, cos, cosh
+from numpy import sqrt, exp, sin, sinh, cos, cosh
 from numpy.testing import assert_array_almost_equal
 from scipy.special import hyp0f1
 
@@ -17,12 +17,13 @@ class test_vie2(unittest.TestCase):
 
         solver = VIE2Solver(mesh, ())
         self.assertEqual(solver.N, 501)
-        self.assertEqual(solver.solution_shape, ())
-        self.assertEqual(solver.y_shape, (501,))
-        self.assertEqual(solver.k_shape, (501, 501,))
-        self.assertEqual(solver.startup_shape, (5,))
+        self.assertEqual(solver.shape, ())
+        self.assertEqual(solver.f1_shape, (501,))
+        self.assertEqual(solver.f2_shape, (501, 501,))
+        self.assertEqual(solver._startup_shape(0), (5,))
+        self.assertEqual(solver._startup_shape(1), (4,))
 
-        t = np.array(list(map(float, mesh)))
+        t = np.fromiter(mesh, float)
 
         t1, t2 = np.meshgrid(t, t, indexing='ij')
         K = t1 ** 2 - t2 ** 2
@@ -38,12 +39,13 @@ class test_vie2(unittest.TestCase):
 
         solver = VIE2Solver(mesh, (3,))
         self.assertEqual(solver.N, 501)
-        self.assertEqual(solver.solution_shape, (3,))
-        self.assertEqual(solver.y_shape, (501, 3))
-        self.assertEqual(solver.k_shape, (501, 501, 3, 3))
-        self.assertEqual(solver.startup_shape, (5, 3))
+        self.assertEqual(solver.shape, (3,))
+        self.assertEqual(solver.f1_shape, (501, 3))
+        self.assertEqual(solver.f2_shape, (501, 501, 3, 3))
+        self.assertEqual(solver._startup_shape(0), (5, 3))
+        self.assertEqual(solver._startup_shape(1), (4, 3))
 
-        t = np.array(list(map(float, mesh)))
+        t = np.fromiter(mesh, float)
 
         t1m, t2m, im, jm = np.meshgrid(t, t, range(3), range(3), indexing='ij')
         K = (im - jm) * (t1m - t2m)
@@ -75,12 +77,13 @@ class test_vie2(unittest.TestCase):
 
         solver = VIE2Solver(mesh, (3, 2))
         self.assertEqual(solver.N, 501)
-        self.assertEqual(solver.solution_shape, (3, 2))
-        self.assertEqual(solver.y_shape, (501, 3, 2))
-        self.assertEqual(solver.k_shape, (501, 501, 3, 2, 3, 2))
-        self.assertEqual(solver.startup_shape, (5, 3, 2))
+        self.assertEqual(solver.shape, (3, 2))
+        self.assertEqual(solver.f1_shape, (501, 3, 2))
+        self.assertEqual(solver.f2_shape, (501, 501, 3, 2, 3, 2))
+        self.assertEqual(solver._startup_shape(0), (5, 3, 2))
+        self.assertEqual(solver._startup_shape(1), (4, 3, 2))
 
-        t = np.array(list(map(float, mesh)))
+        t = np.fromiter(mesh, float)
 
         t1m, t2m, im, jm, km, lm = np.meshgrid(t, t,
                                                range(3), range(2),
@@ -116,6 +119,83 @@ class test_vie2(unittest.TestCase):
         ])
         y_ref = np.moveaxis(y_ref, -1, 0)  # Move time axis to the front
         assert_array_almost_equal(y, y_ref, decimal=10)
+
+    def test_VIE2Solver_causal_scalar(self):
+        mesh = MeshReTime(0.0, 5.0, 101)
+
+        solver = VIE2Solver(mesh, ())
+
+        t = np.fromiter(mesh, float)
+
+        t1, t2 = np.meshgrid(t, t, indexing='ij')
+        f = -1j * exp(-1j * (t1 - t2))
+        q = -1j * exp(-2j * (t1 - t2))
+
+        g = solver.solve_causal(f, q)
+
+        g_ref = -1j * cos(t1 - t2) * exp(-1j * (t1 - t2))
+        assert_array_almost_equal(g, g_ref, decimal=10)
+
+    def test_VIE2Solver_causal_matrix(self):
+        mesh = MeshReTime(0.0, 5.0, 101)
+
+        solver = VIE2Solver(mesh, (3,))
+
+        t = np.fromiter(mesh, float)
+        t1, t2 = np.meshgrid(t, t, indexing='ij')
+
+        H = np.array([[1, 0.5, 0],
+                      [0.5, 2, 0.5],
+                      [0, 0.5, 3]])
+        E, U = np.linalg.eig(H)
+
+        shape = (len(mesh), len(mesh), 3, 3)
+        f = np.empty(shape, dtype=complex)
+        q = np.empty(shape, dtype=complex)
+        for i, j in np.ndindex(shape[:2]):
+            f[i, j, ...] = -1j * U @ np.diag(exp(-1j * E * (t[i] - t[j]))) @ U.T
+            q[i, j, ...] = -1j * U @ np.diag(exp(-2j * E * (t[i] - t[j]))) @ U.T
+
+        g = solver.solve_causal(f, q)
+
+        # These solutions are obtained by means of the Laplace transform
+        # (see doc/vie2.nb for details).
+        x1 = np.sqrt(6)
+        x2 = np.sqrt(1.5)
+        dt = t1 - t2
+        g_ref = exp(-4j * dt) * np.array([
+            [(-10j - 33j * cos(x1 * dt)
+                + exp(3j * dt) * (-5j - 42j * cos(x2 * dt)
+                                  + 17 * x1 * sin(x2 * dt))
+                + 13 * x1 * sin(x1 * dt)) / 90,
+                1j * (-20 + 12 * cos(x1 * dt) + 2 * exp(3j * dt)
+                      * (-5 + 9 * cos(x2 * dt) + 4j * x1 * sin(x2 * dt))
+                      + 7j * x1 * sin(x1 * dt)) / 90,
+                     (10j - 9j * cos(x1 * dt) + exp(3j * dt)
+                      * (5j - 6j * cos(x2 * dt)
+                      + x1 * sin(x2 * dt)) - x1 * sin(x1 * dt)) / 90],
+            [1j * (-20 + 12 * cos(x1 * dt) + 2 * exp(3j * dt)
+                   * (-5 + 9 * cos(x2 * dt) + 4j * x1 * sin(x2 * dt))
+                   + 7j * x1 * sin(x1 * dt)) / 90,
+                (-20j - 9j * cos(x1 * dt) + exp(3j * dt)
+                 * (-10j - 6j * cos(x2 * dt) + x1 * sin(x2 * dt))
+                 - x1 * sin(x1 * dt)) / 45,
+             -1j * (-20 + 24 * cos(x1 * dt) + 2 * exp(3j * dt)
+             * (-5 + 3 * cos(x2 * dt) - 2j * x1 * sin(x2 * dt))
+             - 11j * x1 * sin(x1 * dt)) / 90],
+            [(10j - 9j * cos(x1 * dt) + exp(3j * dt)
+             * (5j - 6j * cos(x2 * dt) + x1 * sin(x2 * dt))
+             - x1 * sin(x1 * dt)) / 90,
+             -1j * (-20 + 24 * cos(x1 * dt) + 2 * exp(3j * dt)
+             * (-5 + 3 * cos(x2 * dt) - 2j * x1 * sin(x2 * dt))
+             - 11j * x1 * sin(x1 * dt)) / 90,
+             -1j * (10 + 57 * cos(x1 * dt) + exp(3j * dt)
+             * (5 + 18 * cos(x2 * dt) - 7j * x1 * sin(x2 * dt))
+             - 23j * x1 * sin(x1 * dt)) / 90]
+        ])
+        # Move time axes to the front
+        g_ref = np.moveaxis(g_ref, (-2, -1), (0, 1))
+        assert_array_almost_equal(g, g_ref, decimal=7)
 
 
 if __name__ == '__main__':

@@ -12,49 +12,58 @@ from .integration import GregoryIntegrator
 
 class VIE2Solver:
     r"""
-    Solve the Volterra integral equation of the second kind
-
-      y_a(t) + \sum_b \int_0^t ds k_{ab}(t, s) y_b(s) = q_b(t)
-
-    w.r.t. y_a(t) on a uniform real time mesh using start-up and time-stepping
-    procedures based on the Gregory quadrature rule. The solution y_a(t) is,
-    in general, tensor-valued with an arbitrary shape and 'a' is the
-    corresponding multi-index.
+    Solver for a few families of Volterra integral equations of the second kind.
     """
 
-    def __init__(self, mesh: MeshReTime, solution_shape, /, gregory_order=5):
+    def __init__(self, mesh: MeshReTime, shape, /, gregory_order=5):
+        r"""
+        mesh: Each real time argument of the integral kernels, right-hand sides
+        and solutions takes values from this time grid.
+
+        shape: Tensor shape associated with each real time argument.
+
+        gregory_order: Order of the Gregory quadrature rule used to solve the
+        equations.
+        """
+
         self.N = len(mesh)
         assert self.N >= gregory_order + 1
+        self.dt = mesh.delta
 
-        self.solution_shape = solution_shape
+        self.shape = shape
 
         self.integrator = GregoryIntegrator(gregory_order)
-        self.y_shape = (self.N,) + solution_shape
-        self.k_shape = (self.N,) + (self.N,) + solution_shape + solution_shape
+        self.f1_shape = (self.N, *shape)
+        self.f2_shape = (self.N, self.N, *shape, *shape)
 
-        self.y = np.zeros(self.y_shape)
+        self.I = self.integrator.I  # noqa: E741
         self.w = self.integrator.weights(mesh)
 
-        self.startup_shape = (gregory_order, *solution_shape)
-        self.startup_mat = np.zeros(self.startup_shape + self.startup_shape)
-        self.startup_rhs = np.zeros(self.startup_shape)
+        # Preallocate self.startup_mat with the maximal required size that
+        # corresponds to lower_limit=0.
+        s_shape = self._startup_shape(0)
+        self.startup_mat = np.zeros(s_shape + s_shape, dtype=complex)
+        self.startup_rhs = np.zeros(s_shape, dtype=complex)
 
-        if solution_shape:
-            self.stepping_mat = np.zeros(solution_shape + solution_shape)
-            self.stepping_rhs = np.zeros(solution_shape)
+        if shape:
+            self.stepping_mat = np.zeros(shape + shape, dtype=complex)
+            self.stepping_rhs = np.zeros(shape, dtype=complex)
         else:
-            self.stepping_mat = np.zeros((1, 1))
-            self.stepping_rhs = np.zeros(1)
+            self.stepping_mat = np.zeros((1, 1), dtype=complex)
+            self.stepping_rhs = np.zeros(1, dtype=complex)
 
-    def startup(self, k: np.ndarray, q: np.ndarray):
-        self.y[0, ...] = q[0, ...]
+    def _startup_shape(self, m: int):
+        return (self.integrator.order - m, *self.shape)
+
+    def _startup(self, k: np.ndarray, q: np.ndarray, y: np.ndarray):
+        y[0, ...] = q[0, ...]
 
         order = self.integrator.order
-        sol_slice = (slice(None),) * len(self.solution_shape)
+        sol_slice = (slice(None),) * len(self.shape)
+        s_shape = self._startup_shape(0)
 
-        s_size = np.prod(self.startup_shape)
-
-        self.startup_mat = np.eye(s_size).reshape(self.startup_mat.shape)
+        self.startup_mat[:] = np.eye(np.prod(s_shape)) \
+            .reshape(self.startup_mat.shape)
         for n, l in product(range(1, order + 1), repeat=2):
             self.startup_mat[(n - 1, *sol_slice, l - 1, *sol_slice)] += \
                 self.w[n, l] * k[n, l, ...]
@@ -63,49 +72,170 @@ class VIE2Solver:
         for n in range(1, order + 1):
             self.startup_rhs[n - 1, ...] -= \
                 self.w[n, 0] * \
-                np.tensordot(k[n, 0, ...], self.y[0, ...], axes=self.y.ndim - 1)
+                np.tensordot(k[n, 0, ...], y[0, ...], axes=y.ndim - 1)
 
-        self.y[1:(order + 1), ...] = \
+        y[1:(order + 1), ...] = \
             np.linalg.tensorsolve(self.startup_mat, self.startup_rhs)
 
-    def step(self, k, q, n):
-        size = int(np.prod(self.solution_shape))
-
-        self.stepping_mat = np.eye(size).reshape(self.stepping_mat.shape)
+    def _step(self, k: np.ndarray, q: np.ndarray, y: np.ndarray, n: int):
+        self.stepping_mat[:] = np.eye(int(np.prod(self.shape))) \
+            .reshape(self.stepping_mat.shape)
         self.stepping_mat += self.w[n, n] * k[n, n, ...]
 
-        self.stepping_rhs = q[n, ...]
+        self.stepping_rhs[:] = q[n, ...]
         for l in range(n):  # noqa: E741
             self.stepping_rhs -= self.w[n, l] \
-                * np.tensordot(k[n, l, ...], self.y[l, ...],
-                               axes=self.y.ndim - 1)
+                * np.tensordot(k[n, l, ...], y[l, ...], axes=y.ndim - 1)
 
-        self.y[n, ...] = np.linalg.tensorsolve(self.stepping_mat,
-                                               self.stepping_rhs)
+        y[n, ...] = np.linalg.tensorsolve(self.stepping_mat, self.stepping_rhs)
 
     def __call__(self, k: np.ndarray, q: np.ndarray):
         r"""
-        Solve the integral equation.
+        Solve the Volterra integral equation of the second kind
+
+            y_a(t) + \sum_b \int_0^t ds k_{a,b}(t, s) y_b(s) = q_b(t)
+
+        w.r.t. y_a(t) on a uniform real time mesh using start-up and
+        time-stepping procedures based on the Gregory quadrature rule. The
+        solution y_a(t) is, in general, tensor-valued with an arbitrary shape
+        and 'a' is the corresponding multi-index.
 
         The array `q` is the right hand side. Its first axis corresponds to the
         time argument and the rest of axes (if any) correspond to the
-        multi-index 'a' with dimensions specified by the `solution_shape` tuple
+        multi-index 'a' with dimensions specified by the `shape` tuple
         passed to the constructor.
 
         The array `k` is the integral kernel. Its layout must be such that
 
         * Its first 2 axes correspond to the time arguments t and s.
-        * The next `len(solution_shape)` axes correspond to the multi-index 'a'.
-        * The final `len(solution_shape)` axes correspond to the multi-index
-          'b'.
+        * The next `len(shape)` axes correspond to the multi-index 'a'.
+        * The final `len(shape)` axes correspond to the multi-index 'b'.
 
         The returned solution y_a(t) has the same layout as `q`.
         """
-        assert k.shape == self.k_shape
-        assert q.shape == self.y_shape
+        assert k.shape == self.f2_shape
+        assert q.shape == self.f1_shape
 
-        self.startup(k, q)
+        y = np.empty(self.f1_shape, dtype=complex)
+
+        self._startup(k, q, y)
         for n in range(self.integrator.order + 1, self.N):
-            self.step(k, q, n)
+            self._step(k, q, y, n)
 
-        return self.y
+        return y
+
+    def _herm_conj(self, a):
+        ls = len(self.shape)
+        hc_axes = (1, 0, *range(2 + ls, 2 + 2 * ls), *range(2, 2 + ls))
+        return -np.conj(np.transpose(a, hc_axes))
+
+    def _causal_startup(self,
+                        f: np.ndarray,
+                        q: np.ndarray,
+                        g: np.ndarray,
+                        m: int):
+        order = self.integrator.order
+        shape_sl = (slice(None),) * len(self.shape)
+
+        # For the given m, make partial views of the preallocated
+        # self.startup_mat and self.startup_rhs.
+        s_shape = self._startup_shape(m)
+        dim = s_shape[0]
+        mat = self.startup_mat[(slice(dim), *shape_sl, slice(dim), *shape_sl)]
+        rhs = self.startup_rhs[(slice(dim), *shape_sl)]
+
+        # Iterate over the second multi-index of g and q
+        for b in np.ndindex(self.shape):
+            mat[:] = np.eye(np.prod(s_shape)).reshape(s_shape + s_shape)
+
+            for n, l in product(range(m + 1, order + 1), repeat=2):
+                mat[(n - (m + 1), *shape_sl, l - (m + 1), *shape_sl)] += \
+                    self.dt * self.I[m, n, l] * f[n, l, ...]
+
+            rhs[:] = q[(slice(m + 1, order + 1), m, *shape_sl, *b)]
+            for n, l in product(range(m + 1, order + 1), range(m + 1)):
+                rhs[n - (m + 1), ...] -= self.dt * self.I[m, n, l] * \
+                    np.tensordot(f[n, l, ...],
+                                 g[(l, m, *shape_sl, *b)],
+                                 axes=len(self.shape))
+
+            y = g[(slice(m + 1, order + 1), m, *shape_sl, *b)]
+            y[:] = np.linalg.tensorsolve(mat, rhs)
+            g[(m, slice(m + 1, order + 1), *b, *shape_sl)] = -np.conj(y)
+
+    def _causal_step(self,
+                     f: np.ndarray,
+                     q: np.ndarray,
+                     g: np.ndarray,
+                     m: int,
+                     n: int):
+        shape_sl = (slice(None),) * len(self.shape)
+
+        # Iterate over the second multi-index of g and q
+        for b in np.ndindex(self.shape):
+            self.stepping_mat[:] = \
+                np.eye(int(np.prod(self.shape)), dtype=complex) \
+                .reshape(self.stepping_mat.shape)
+
+            self.stepping_rhs[:] = q[(n, m, *shape_sl, *b)]
+            if n - m > self.integrator.order:
+                self.stepping_mat += self.w[n - m, n - m] * f[n, n, ...]
+                for j in range(m, n):
+                    self.stepping_rhs -= self.w[n - m, j - m] \
+                        * np.tensordot(f[n, j, ...],
+                                       g[(j, m, *shape_sl, *b)],
+                                       axes=len(self.shape))
+            else:  # n - m <= self.integrator.order
+                self.stepping_mat += self.w[n - m, 0] * f[n, n, ...]
+                for j in range(1, self.integrator.order + 1):
+                    self.stepping_rhs -= self.w[n - m, j] \
+                        * np.tensordot(f[n, n - j, ...],
+                                       g[(n - j, m, *shape_sl, *b)],
+                                       axes=len(self.shape))
+
+            g[(n, m, *shape_sl, *b)] = np.linalg.tensorsolve(self.stepping_mat,
+                                                             self.stepping_rhs)
+            g[(m, n, *b, *shape_sl)] = -np.conj(g[(n, m, *shape_sl, *b)])
+
+    def solve_causal(self, f: np.ndarray, q: np.ndarray):
+        r"""
+        Solve the causal Volterra integral equation of the second kind
+
+            g_{a,b}(t, t') + \sum_c \int_{t'}^t ds f_{a,c}(t, s) g_{c,b}(s, t')
+                = q_{a,b}(t, t')
+
+        w.r.t. g_{a,b}(t, t') on a uniform real time mesh using start-up and
+        time-stepping procedures based on the Gregory quadrature rule. The
+        solution g_{a, b}(t, t') is, in general, tensor-valued with 'a' and
+        'b' being the corresponding multi-indices.
+
+        Arrays 'f' and 'q' must have the following layouts.
+
+        * The first 2 axes correspond to the time arguments.
+        * The next `len(shape)` axes correspond to the first multi-index.
+        * The final `len(shape)` axes correspond to the second multi-index.
+
+        The kernel f_{a, b}(t, t') must obey the Hermitian symmetry property
+
+            f_{a, b}(t, t') = -conj(f_{b, a}(t', t)).
+
+        The returned solution g_{a,b}(t, t') has the same layout as `q`.
+        """
+        assert f.shape == self.f2_shape
+        assert q.shape == self.f2_shape
+
+        np.testing.assert_allclose(f, self._herm_conj(f), rtol=1e-10)
+
+        g = np.empty(q.shape, dtype=complex)
+
+        # Copy the diagonal elements t = t' from q
+        diag_idx = np.diag_indices(g.shape[0], ndim=2)
+        g[diag_idx] = q[diag_idx]
+
+        for m in range(self.integrator.order):
+            self._causal_startup(f, q, g, m)
+        for m in range(g.shape[1] - 1):
+            for n in range(max(self.integrator.order, m) + 1, g.shape[0]):
+                self._causal_step(f, q, g, m, n)
+
+        return g
