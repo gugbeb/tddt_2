@@ -160,41 +160,31 @@ class test_vie2(unittest.TestCase):
 
         # These solutions are obtained by means of the Laplace transform
         # (see doc/vie2.nb for details).
-        x1 = np.sqrt(6)
-        x2 = np.sqrt(1.5)
         dt = t1 - t2
-        g_ref = exp(-4j * dt) * np.array([
-            [(-10j - 33j * cos(x1 * dt)
-                + exp(3j * dt) * (-5j - 42j * cos(x2 * dt)
-                                  + 17 * x1 * sin(x2 * dt))
-                + 13 * x1 * sin(x1 * dt)) / 90,
-                1j * (-20 + 12 * cos(x1 * dt) + 2 * exp(3j * dt)
-                      * (-5 + 9 * cos(x2 * dt) + 4j * x1 * sin(x2 * dt))
-                      + 7j * x1 * sin(x1 * dt)) / 90,
-                     (10j - 9j * cos(x1 * dt) + exp(3j * dt)
-                      * (5j - 6j * cos(x2 * dt)
-                      + x1 * sin(x2 * dt)) - x1 * sin(x1 * dt)) / 90],
-            [1j * (-20 + 12 * cos(x1 * dt) + 2 * exp(3j * dt)
-                   * (-5 + 9 * cos(x2 * dt) + 4j * x1 * sin(x2 * dt))
-                   + 7j * x1 * sin(x1 * dt)) / 90,
-                (-20j - 9j * cos(x1 * dt) + exp(3j * dt)
-                 * (-10j - 6j * cos(x2 * dt) + x1 * sin(x2 * dt))
-                 - x1 * sin(x1 * dt)) / 45,
-             -1j * (-20 + 24 * cos(x1 * dt) + 2 * exp(3j * dt)
-             * (-5 + 3 * cos(x2 * dt) - 2j * x1 * sin(x2 * dt))
-             - 11j * x1 * sin(x1 * dt)) / 90],
-            [(10j - 9j * cos(x1 * dt) + exp(3j * dt)
-             * (5j - 6j * cos(x2 * dt) + x1 * sin(x2 * dt))
-             - x1 * sin(x1 * dt)) / 90,
-             -1j * (-20 + 24 * cos(x1 * dt) + 2 * exp(3j * dt)
-             * (-5 + 3 * cos(x2 * dt) - 2j * x1 * sin(x2 * dt))
-             - 11j * x1 * sin(x1 * dt)) / 90,
-             -1j * (10 + 57 * cos(x1 * dt) + exp(3j * dt)
-             * (5 + 18 * cos(x2 * dt) - 7j * x1 * sin(x2 * dt))
-             - 23j * x1 * sin(x1 * dt)) / 90]
-        ])
+        s23 = sqrt(2 / 3)
+        s32 = sqrt(3 / 2)
+        g_ref = np.multiply.outer(1j / 18 * (exp(-1j * dt) + 2 * exp(-4j * dt)),
+                                  np.array([[-1, -2, 1],
+                                            [-2, -4, 2],
+                                            [1, 2, -1]]))
+        g_ref += np.multiply.outer(exp(-4j * dt) * sin(sqrt(6) * dt) * s23 / 30,
+                                   np.array([[13, -7, -1],
+                                             [-7, -2, -11],
+                                             [-1, -11, -23]]))
+        g_ref += np.multiply.outer(exp(-4j * dt) * cos(sqrt(6) * dt) * 1j / 30,
+                                   np.array([[-11, 4, -3],
+                                             [4, -6, -8],
+                                             [-3, -8, -19]]))
+        g_ref += np.multiply.outer(exp(-1j * dt) * sin(s32 * dt) * s23 / 30,
+                                   np.array([[17, -8, 1],
+                                             [-8, 2, -4],
+                                             [1, -4, -7]]))
+        g_ref += np.multiply.outer(exp(-1j * dt) * cos(s32 * dt) * 1j / 30,
+                                   np.array([[-14, 6, -2],
+                                             [6, -4, -2],
+                                             [-2, -2, -6]]))
+
         # Move time axes to the front
-        g_ref = np.moveaxis(g_ref, (-2, -1), (0, 1))
         assert_array_almost_equal(g, g_ref, decimal=7)
 
 
