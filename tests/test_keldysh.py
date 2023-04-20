@@ -18,7 +18,8 @@ from tddt.keldysh import (Branch,
                           lesser,
                           retarded,
                           advanced,
-                          retarded_mod,
+                          retarded_ext,
+                          advanced_ext,
                           is_hermitian)
 from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
@@ -218,10 +219,14 @@ class test_keldysh(unittest.TestCase):
             t0, t1 = p[0], p[1]
             ref = g12[p] - g21[p] if t0.linear_index <= t1.linear_index else 0
             assert_array_equal(g_adv[p], ref)
-        # Modified retarded component
-        g_ret_mod = retarded_mod(g)
-        for p in g_ret_mod.mesh:
-            assert_array_equal(g_ret_mod[p], g21[p] - g12[p])
+        # Extended retarded component
+        g_ret_ext = retarded_ext(g)
+        for p in g_ret_ext.mesh:
+            assert_array_equal(g_ret_ext[p], g21[p] - g12[p])
+        # Extended advanced component
+        g_adv_ext = advanced_ext(g)
+        for p in g_adv_ext.mesh:
+            assert_array_equal(g_adv_ext[p], g12[p] - g21[p])
 
         non_t_shape = tuple(len(m) for m in g.mesh.components[2:]) \
             + g.target_shape

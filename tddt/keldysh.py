@@ -273,10 +273,14 @@ def retarded(g: KeldyshGF) -> Gf:
     return g_ret
 
 
-def retarded_mod(g: KeldyshGF) -> Gf:
-    r"""Returns the modified retarded component of a 2-point Keldysh
-    Green's function. The modified version does not contain the time
-    step-function in its definition."""
+def retarded_ext(g: KeldyshGF) -> Gf:
+    r"""
+    Returns the retarded component of a 2-point Keldysh Green's function
+    G^r(t, t') continuously extended to the domain t < t'.
+    The extended retarded component is defined as
+
+        \tiled G^r(t, t') = G^>(t, t') - G^<(t, t').
+    """
     assert g.n_args == 2, "g must be a 2-point Green's function"
     g_g = g[Branch.BACKWARD, Branch.FORWARD]
     g_l = g[Branch.FORWARD, Branch.BACKWARD]
@@ -298,6 +302,22 @@ def advanced(g: KeldyshGF) -> Gf:
     return g_adv
 
 
+def advanced_ext(g: KeldyshGF) -> Gf:
+    r"""
+    Returns the advanced component of a 2-point Keldysh Green's function
+    G^a(t, t') continuously extended to the domain t > t'.
+    The extended advanced component is defined as
+
+        \tiled G^a(t, t') = G^<(t, t') - G^>(t, t').
+    """
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+    g_g = g[Branch.BACKWARD, Branch.FORWARD]
+    g_l = g[Branch.FORWARD, Branch.BACKWARD]
+    g_adv = Gf(mesh=g.mesh, target_shape=g.target_shape)
+    g_adv.data[...] = g_l.data - g_g.data
+    return g_adv
+
+
 def is_hermitian(g: KeldyshGF, *, atol=.0) -> bool:
     r"""Checks if a 2-point Keldysh Green's function is hermitian in the sense
     of the NESSi paper"""
@@ -315,9 +335,9 @@ def is_hermitian(g: KeldyshGF, *, atol=.0) -> bool:
 
     g_g = greater(g)
     g_l = lesser(g)
-    g_ret_mod = retarded_mod(g)
+    g_ret_ext = retarded_ext(g)
 
-    for comp in (g_g, g_l, g_ret_mod):
+    for comp in (g_g, g_l, g_ret_ext):
         if not np.allclose(comp.data,
                            -np.conj(np.moveaxis(comp.data, axes_from, axes_to)),
                            atol=atol):
