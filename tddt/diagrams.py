@@ -31,7 +31,7 @@ def selfenergy_2nd_order(Lambda: KeldyshGF, g: KeldyshGF, w: KeldyshGF):
     """
     assert Lambda.n_args == 3, "Lambda must be a 3-point vertex"
     assert g.n_args == 2, "g must be a 2-point GF"
-    assert g.n_args == 2, "w must be a 2-point GF"
+    assert w.n_args == 2, "w must be a 2-point GF"
 
     # f1(z_1, z'''', z'') = \int_C dz' \Lambda(z_1, z', z'') g(z', z'''')
     f1 = conv(Lambda, g, [(1, 0)], free_args=([0, 2], [1]))
@@ -52,7 +52,7 @@ def selfenergy_2nd_order_hf(Lambda: KeldyshGF, g: KeldyshGF, w: KeldyshGF):
     """
     assert Lambda.n_args == 3, "Lambda must be a 3-point vertex"
     assert g.n_args == 2, "g must be a 2-point GF"
-    assert g.n_args == 2, "w must be a 2-point GF"
+    assert w.n_args == 2, "w must be a 2-point GF"
 
     # n(z'') = \int_C dz''' dz'''' \Lambda(z''', z'''', z'') g(z'''', z''')
     n = conv(Lambda, g, [(0, 1), (1, 0)])
