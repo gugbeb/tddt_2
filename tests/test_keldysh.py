@@ -19,8 +19,7 @@ from tddt.keldysh import (Branch,
                           retarded,
                           advanced,
                           retarded_mod,
-                          ret2adv,
-                          adv2ret,
+                          conj,
                           is_hermitian)
 from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
@@ -403,54 +402,63 @@ class test_keldysh(unittest.TestCase):
 
             self._test_gf(g)
 
-    def test_ret2adv(self):
-        n_k = 3
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
-
-        mesh = MeshProduct(self.t_mesh1, self.t_mesh2)
+    def test_conj(self):
+        mesh = MeshProduct(self.t_mesh1, self.t_mesh1)
 
         # Scalar-valued GF
-        g_ret = Gf(mesh=mesh, target_shape=())
-        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2) \
-            .reshape((self.n_t1, self.n_t2))
-        g_adv = ret2adv(g_ret)
-        for t1, t2 in g_adv.mesh:
-            self.assertEqual(g_adv[t1, t2], np.conj(g_ret[t2, t1]))
+        g_l = Gf(mesh=mesh, target_shape=())
+        g_g = Gf(mesh=mesh, target_shape=())
+        for t1, t2 in mesh:
+            e = np.exp(-1j * (t1.value - t2.value))
+            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
+            g_l[t1, t2] = -1j * (-0.1) * e
+        g = from_lesser_greater(g_l, g_g)
+
+        g_adv = conj(retarded(g))
+        g_adv_ref = advanced(g)
+        assert_array_equal(g_adv.data, g_adv_ref.data)
 
         # Matrix-valued GF
-        g_ret = Gf(mesh=mesh, target_shape=(2, 3))
-        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2 * 6) \
-            .reshape((self.n_t1, self.n_t2, 2, 3))
-        g_adv = ret2adv(g_ret)
-        for (t1, t2), i, j in product(g_adv.mesh, range(3), range(2)):
-            self.assertEqual(g_adv[t1, t2][i, j], np.conj(g_ret[t2, t1][j, i]))
+        g_l = Gf(mesh=mesh, target_shape=(3, 3))
+        g_g = Gf(mesh=mesh, target_shape=(3, 3))
+        H = np.array([[1.0, 0.5, -0.1j],
+                      [0.5, 2.0, 0.5],
+                      [0.1j, 0.5, 3.0]])
+        E, U = np.linalg.eig(H)
+        for t1, t2 in MeshProduct(self.t_mesh1, self.t_mesh1):
+            dt = (t1.value - t2.value)
+            e = U @ np.diag(np.exp(-1j * E * dt)) @ np.conj(U.T)
+            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
+            g_l[t1, t2] = -1j * (-0.1) * e
+        g = from_lesser_greater(g_l, g_g)
+
+        g_adv = conj(retarded(g))
+        g_adv_ref = advanced(g)
+        assert_array_almost_equal(g_adv.data, g_adv_ref.data, decimal=12)
+
+        n_k = 3
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        eps_k = np.array([k.value[0] / np.pi + 1.0 for k in bz_mesh])
+        mesh = MeshProduct(self.t_mesh1, self.t_mesh1, bz_mesh)
 
         # Matrix-valued GF with an extra mesh component
-        mesh = MeshProduct(self.t_mesh1, self.t_mesh2, bz_mesh)
-        g_ret = Gf(mesh=mesh, target_shape=(2, 3))
-        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2 * 6 * n_k ** 2) \
-            .reshape((self.n_t1, self.n_t2, n_k ** 2, 2, 3))
-        g_adv = ret2adv(g_ret)
-        for (t1, t2, K), i, j in product(g_adv.mesh, range(3), range(2)):
-            self.assertEqual(g_adv[t1, t2, K][i, j],
-                             np.conj(g_ret[t2, t1, K][j, i]))
+        g_l = Gf(mesh=mesh, target_shape=(3, 3))
+        g_g = Gf(mesh=mesh, target_shape=(3, 3))
+        for k, eps in zip(bz_mesh, eps_k):
+            H = np.array([[eps, 0.5, -0.1j],
+                          [0.5, 2.0 * eps, 0.5],
+                          [0.1j, 0.5, 3.0 * eps]])
+            E, U = np.linalg.eig(H)
+            for t1, t2 in MeshProduct(self.t_mesh1, self.t_mesh1):
+                dt = (t1.value - t2.value)
+                e = U @ np.diag(np.exp(-1j * E * dt)) @ np.conj(U.T)
+                g_g[t1, t2, k] = -1j * (1.0 - 0.1) * e
+                g_l[t1, t2, k] = -1j * (-0.1) * e
+        g = from_lesser_greater(g_l, g_g)
 
-        # Tensor-valued GF with an extra mesh component
-        g_ret = Gf(mesh=mesh, target_shape=(2, 3, 4))
-        g_ret.data[:] = 1j * np.arange(self.n_t1 * self.n_t2 * 24 * n_k ** 2) \
-            .reshape((self.n_t1, self.n_t2, n_k ** 2, 2, 3, 4))
-        g_adv = ret2adv(g_ret, n_left_indices=2)
-        for (t1, t2, K), i, j, k in product(g_adv.mesh,
-                                            range(4),
-                                            range(2),
-                                            range(3)):
-            self.assertEqual(g_adv[t1, t2, K][i, j, k],
-                             np.conj(g_ret[t2, t1, K][j, k, i]))
-
-        g_ret2 = adv2ret(g_adv, n_left_indices=1)
-        self.assertEqual(g_ret2.mesh, g_ret.mesh)
-        self.assertEqual(g_ret2.target_shape, g_ret.target_shape)
-        assert_array_equal(g_ret2.data, g_ret.data)
+        g_adv = conj(retarded(g))
+        g_adv_ref = advanced(g)
+        assert_array_almost_equal(g_adv.data, g_adv_ref.data, decimal=12)
 
     def test_is_hermitian(self):
         mesh = MeshProduct(self.t_mesh1, self.t_mesh1)
