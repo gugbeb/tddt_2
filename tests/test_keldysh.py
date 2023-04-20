@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy.linalg import expm
 
-from triqs.gf import MeshReTime, GfReTime, MeshBrillouinZone, MeshProduct, Gf
+from triqs.gf import MeshReTime, MeshBrillouinZone, MeshProduct, Gf
 from triqs.gf.descriptors import Function
 from triqs.lattice import BravaisLattice, BrillouinZone
 
@@ -19,7 +19,6 @@ from tddt.keldysh import (Branch,
                           retarded,
                           advanced,
                           retarded_mod,
-                          conj,
                           is_hermitian)
 from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
@@ -402,64 +401,6 @@ class test_keldysh(unittest.TestCase):
 
             self._test_gf(g)
 
-    def test_conj(self):
-        mesh = MeshProduct(self.t_mesh1, self.t_mesh1)
-
-        # Scalar-valued GF
-        g_l = Gf(mesh=mesh, target_shape=())
-        g_g = Gf(mesh=mesh, target_shape=())
-        for t1, t2 in mesh:
-            e = np.exp(-1j * (t1.value - t2.value))
-            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
-            g_l[t1, t2] = -1j * (-0.1) * e
-        g = from_lesser_greater(g_l, g_g)
-
-        g_adv = conj(retarded(g))
-        g_adv_ref = advanced(g)
-        assert_array_equal(g_adv.data, g_adv_ref.data)
-
-        # Matrix-valued GF
-        g_l = Gf(mesh=mesh, target_shape=(3, 3))
-        g_g = Gf(mesh=mesh, target_shape=(3, 3))
-        H = np.array([[1.0, 0.5, -0.1j],
-                      [0.5, 2.0, 0.5],
-                      [0.1j, 0.5, 3.0]])
-        E, U = np.linalg.eig(H)
-        for t1, t2 in MeshProduct(self.t_mesh1, self.t_mesh1):
-            dt = (t1.value - t2.value)
-            e = U @ np.diag(np.exp(-1j * E * dt)) @ np.conj(U.T)
-            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
-            g_l[t1, t2] = -1j * (-0.1) * e
-        g = from_lesser_greater(g_l, g_g)
-
-        g_adv = conj(retarded(g))
-        g_adv_ref = advanced(g)
-        assert_array_almost_equal(g_adv.data, g_adv_ref.data, decimal=12)
-
-        n_k = 3
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
-        eps_k = np.array([k.value[0] / np.pi + 1.0 for k in bz_mesh])
-        mesh = MeshProduct(self.t_mesh1, self.t_mesh1, bz_mesh)
-
-        # Matrix-valued GF with an extra mesh component
-        g_l = Gf(mesh=mesh, target_shape=(3, 3))
-        g_g = Gf(mesh=mesh, target_shape=(3, 3))
-        for k, eps in zip(bz_mesh, eps_k):
-            H = np.array([[eps, 0.5, -0.1j],
-                          [0.5, 2.0 * eps, 0.5],
-                          [0.1j, 0.5, 3.0 * eps]])
-            E, U = np.linalg.eig(H)
-            for t1, t2 in MeshProduct(self.t_mesh1, self.t_mesh1):
-                dt = (t1.value - t2.value)
-                e = U @ np.diag(np.exp(-1j * E * dt)) @ np.conj(U.T)
-                g_g[t1, t2, k] = -1j * (1.0 - 0.1) * e
-                g_l[t1, t2, k] = -1j * (-0.1) * e
-        g = from_lesser_greater(g_l, g_g)
-
-        g_adv = conj(retarded(g))
-        g_adv_ref = advanced(g)
-        assert_array_almost_equal(g_adv.data, g_adv_ref.data, decimal=12)
-
     def test_is_hermitian(self):
         mesh = MeshProduct(self.t_mesh1, self.t_mesh1)
 
@@ -717,7 +658,7 @@ class test_keldysh(unittest.TestCase):
     def test_keldysh_vertex3(self):
 
         def make_time_piece(x):
-            g = GfReTime(mesh=self.ttt_mesh, target_shape=())
+            g = Gf(mesh=self.ttt_mesh, target_shape=())
             g.data[:] = x
             return g
         G = {(0, 1, 2): make_time_piece(1.0),
