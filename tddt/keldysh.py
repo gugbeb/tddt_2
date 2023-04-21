@@ -6,8 +6,9 @@ from enum import Enum
 from copy import deepcopy
 from itertools import product, takewhile, islice
 from typing import Tuple, Dict, Union, Sequence
-from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 import numpy as np
+
+from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
 from .util import subscripts
 from .integration import GregoryIntegrator
@@ -318,9 +319,39 @@ def advanced_ext(g: KeldyshGF) -> Gf:
     return g_adv
 
 
+def herm_conj(g: KeldyshGF) -> KeldyshGF:
+    r"""
+    Returns the Hermitian conjugate of a 2-point Keldysh Green's function as
+    defined in the NESSi paper.
+    """
+    assert g.n_args == 2, "g must be a 2-point Green's function"
+
+    g_g = greater(g)
+    g_l = lesser(g)
+
+    mesh_conj = MeshProduct(g.time_mesh[1],
+                            g.time_mesh[0],
+                            *g.non_time_mesh.components)
+    target_shape_conj = g.target_subshapes[1] + g.target_subshapes[0]
+
+    g_conj_g = Gf(mesh=mesh_conj, target_shape=target_shape_conj)
+    g_conj_l = Gf(mesh=mesh_conj, target_shape=target_shape_conj)
+
+    nli, nri = len(g.target_subshapes[0]), len(g.target_subshapes[1])
+
+    axes_from = (0, 1, *range(-1, - nli - 1, -1))
+    axes_to = (1, 0, *range(-1 - nli, -2 * nli - 1, -1))
+    g_conj_g.data[:] = -np.conj(np.moveaxis(g_g.data, axes_from, axes_to))
+    g_conj_l.data[:] = -np.conj(np.moveaxis(g_l.data, axes_from, axes_to))
+
+    return from_lesser_greater(g_conj_l, g_conj_g, n_left_target_axes=nri)
+
+
 def is_hermitian(g: KeldyshGF, *, atol=.0) -> bool:
-    r"""Checks if a 2-point Keldysh Green's function is hermitian in the sense
-    of the NESSi paper"""
+    r"""
+    Checks if a 2-point Keldysh Green's function is Hermitian in the sense of
+    the NESSi paper.
+    """
     assert g.n_args == 2, "g must be a 2-point Green's function"
 
     if g.time_mesh.components[0] != g.time_mesh.components[1]:
@@ -330,14 +361,10 @@ def is_hermitian(g: KeldyshGF, *, atol=.0) -> bool:
 
     nli = len(g.target_subshapes[0])
 
-    axes_from = [0, 1, *range(-1, - nli - 1, -1)]
-    axes_to = [1, 0, *range(-1 - nli, -2 * nli - 1, -1)]
+    axes_from = (0, 1, *range(-1, - nli - 1, -1))
+    axes_to = (1, 0, *range(-1 - nli, -2 * nli - 1, -1))
 
-    g_g = greater(g)
-    g_l = lesser(g)
-    g_ret_ext = retarded_ext(g)
-
-    for comp in (g_g, g_l, g_ret_ext):
+    for comp in (greater(g), lesser(g)):
         if not np.allclose(comp.data,
                            -np.conj(np.moveaxis(comp.data, axes_from, axes_to)),
                            atol=atol):
