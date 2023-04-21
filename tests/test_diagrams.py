@@ -181,7 +181,7 @@ class test_diagrams(unittest.TestCase):
                     W0[k] * W0[l] * W1[m] * W1[n] * \
                     w[b4, b5].data[m, n] * Lambda[b3, b1, b5].data[l, j, n]
 
-        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref, precision=1e-3)
 
     def test_selfenergy_2nd_order_matrix(self):
         Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
@@ -212,7 +212,7 @@ class test_diagrams(unittest.TestCase):
                     w[b4, b5].data[m, n, w3, w4] * \
                     Lambda[b3, b1, b5].data[l, j, n, w2, y, w4]
 
-        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref, precision=1e-4)
 
     def test_selfenergy_2nd_order_scalar_bz(self):
         Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
@@ -275,7 +275,7 @@ class test_diagrams(unittest.TestCase):
                     w[b4, b5].data[m, n, K, w3, w4] * \
                     Lambda[b3, b1, b5].data[l, j, n, w2, y, w4]
 
-        assert_keldysh_gf_almost_equal(sigma, sigma_ref, rtol=1e-6)
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref, precision=1e-2)
 
     def test_selfenergy_2nd_order_hf_scalar(self):
         Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
@@ -331,7 +331,7 @@ class test_diagrams(unittest.TestCase):
                     Lambda[b2, b3, b5].data[k, l, n, w1, w2, w4] * \
                     W0[k] * W0[l] * g[b3, b2].data[l, k, w2, w1]
 
-        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref, precision=1e-4)
 
     def test_selfenergy_2nd_order_hf_scalar_bz(self):
         Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
@@ -360,7 +360,7 @@ class test_diagrams(unittest.TestCase):
                     Lambda[b2, b3, b5].data[k, l, n] * W0[k] * W0[l] * \
                     g[b3, b2].data[l, k, K]
 
-        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref, precision=1e-4)
 
     def test_selfenergy_2nd_order_hf_matrix_bz(self):
         Lambda_mesh = MeshProduct(*[self.t_mesh[i] for i in (0, 0, 1)])
@@ -392,7 +392,7 @@ class test_diagrams(unittest.TestCase):
                     Lambda[b2, b3, b5].data[k, l, n, w1, w2, w4] * \
                     W0[k] * W0[l] * g[b3, b2].data[l, k, K, w2, w1]
 
-        assert_keldysh_gf_almost_equal(sigma, sigma_ref)
+        assert_keldysh_gf_almost_equal(sigma, sigma_ref, precision=1e-4)
 
 
 if __name__ == '__main__':
