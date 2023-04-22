@@ -5,8 +5,15 @@
 from itertools import product
 import numpy as np
 
-from triqs.gf import MeshReTime
+from triqs.gf import Gf, MeshReTime
 
+from .retime import conj, conv_l_adv
+from .keldysh import (KeldyshGF,
+                      lesser,
+                      retarded,
+                      retarded_ext,
+                      is_hermitian,
+                      from_lesser_greater)
 from .integration import GregoryIntegrator
 
 
@@ -93,7 +100,7 @@ class VIE2Solver:
         r"""
         Solve the Volterra integral equation of the second kind
 
-            y_a(t) + \sum_b \int_0^t ds k_{a,b}(t, s) y_b(s) = q_b(t)
+            y_a(t) + \sum_b \int_0^t ds k_{a,b}(t, s) y_b(s) = q_a(t)
 
         w.r.t. y_a(t) on a uniform real time mesh using start-up and
         time-stepping procedures based on the Gregory quadrature rule. The
@@ -224,7 +231,7 @@ class VIE2Solver:
         assert f.shape == self.f2_shape
         assert q.shape == self.f2_shape
 
-        np.testing.assert_allclose(f, self._herm_conj(f), rtol=1e-10)
+        np.testing.assert_allclose(f, self._herm_conj(f), atol=1e-14)
 
         g = np.empty(q.shape, dtype=complex)
 
@@ -239,3 +246,83 @@ class VIE2Solver:
                 self._causal_step(f, q, g, m, n)
 
         return g
+
+
+def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
+    r"""
+    Solve the contour Dyson equation in integral form,
+
+      G(t, t') + \int_C d\bar t F(t, \bar t) G(\bar t, t') = Q(t, t')
+
+    w.r.t. G(t, t') with a Hermitian Q(t, t') and
+
+        \int_C d\bar t F(t, \bar t) Q(\bar t, t') =
+        \int_C d\bar t Q(t, \bar t) F^\dagger(\bar t, t').
+
+    The resulting G(t, t') is also Hermitian.
+    """
+    assert is_hermitian(Q), "Q must be Hermitian"
+    assert F.n_args == 2, "F must be a 2-point GF"
+    assert F.time_mesh.components[1] == Q.time_mesh.components[0], \
+        "Incompatible time meshes of F and Q"
+    assert F.target_subshapes[1] == Q.target_subshapes[0], \
+        "Incompatible target subshapes of F and Q"
+    assert F.non_time_mesh == Q.non_time_mesh, \
+        "Different non-time meshes of F and Q"
+    assert F.time_mesh.components[0] == F.time_mesh.components[1], \
+        "Time mesh of F must be square"
+    assert F.target_subshapes[0] == F.target_subshapes[1], \
+        "The two target subshapes of F must be equal"
+    # FIXME: This check must be enabled as soon as keldysh.conv() is fixed
+    # assert_keldysh_gf_almost_equal(
+    #     F @ Q, Q @ herm_conj(F),
+    #     1e-14,
+    #     err_msg=r"F and Q must satisfy F * Q == Q * F^\ddagger"
+    # )
+
+    solver = VIE2Solver(Q.time_mesh.components[0],
+                        Q.target_subshapes[0],
+                        gregory_order=Q.integrator.order)
+
+    non_time_mesh_shape = tuple(map(len, Q.non_time_mesh.components))
+
+    #
+    # Solve equation for the extended retarded component of G
+    #
+
+    Q_ret = retarded(Q)
+    F_ret_ext = retarded_ext(F)
+    G_ret_ext = Gf(mesh=Q.mesh, target_shape=Q.target_shape)
+
+    for non_t_idx in np.ndindex(non_time_mesh_shape):
+        s = (slice(None), slice(None), *non_t_idx, Ellipsis)
+        G_ret_ext.data[s] = solver.solve_causal(F_ret_ext.data[s],
+                                                Q_ret.data[s])
+
+    #
+    # Solve equation for the lesser component of G
+    #
+
+    F_l = lesser(F)
+    G_adv_ext = conj(G_ret_ext)  # This applies only for a Hermitian G(t, t')
+    rhs_l = lesser(Q) - conv_l_adv(F_l, G_adv_ext)
+    G_l = Gf(mesh=rhs_l.mesh, target_shape=rhs_l.target_shape)
+
+    time_mesh_shape2 = (len(rhs_l.mesh.components[1]),)
+    target_subshape1, target_subshape2 = Q.target_subshapes[:2]
+
+    # Iterate over all points of the non-time mesh
+    for non_t_idx in np.ndindex(non_time_mesh_shape):
+        f_s = (slice(None), slice(None), *non_t_idx, Ellipsis)
+
+        # Iterate over the second time argument and the second subshape of rhs_l
+        for t2_idx, shape2_idx in product(np.ndindex(time_mesh_shape2),
+                                          np.ndindex(target_subshape2)):
+
+            rhs_s = (slice(None), *t2_idx,
+                     *non_t_idx,
+                     *[slice(None)] * len(target_subshape1), *shape2_idx)
+            G_l.data[rhs_s] = solver(F_ret_ext.data[f_s], rhs_l.data[rhs_s])
+
+    # Rebuild G from G_ret_ext and G_l
+    return from_lesser_greater(G_l, G_l + G_ret_ext)

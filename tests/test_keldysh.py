@@ -412,6 +412,9 @@ class test_keldysh(unittest.TestCase):
     def test_hermitian(self):
         mesh = MeshProduct(self.t_mesh1, self.t_mesh1)
 
+        # TODO: herm_conj(herm_conj(A)) == A
+        # TODO: herm_conj(A @ B) == herm_conj(B) @ herm_conj(A)
+
         # Scalar-valued GF
         g_l = Gf(mesh=mesh, target_shape=())
         g_g = Gf(mesh=mesh, target_shape=())

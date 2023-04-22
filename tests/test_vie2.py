@@ -4,9 +4,13 @@ from numpy import sqrt, exp, sin, sinh, cos, cosh
 from numpy.testing import assert_array_almost_equal
 from scipy.special import hyp0f1
 
-from triqs.gf import MeshReTime
+from triqs.gf import Gf, MeshReTime, MeshBrillouinZone, MeshProduct
+from triqs.lattice import BravaisLattice, BrillouinZone
+from triqs.utility.comparison_tests import assert_gfs_are_close
 
-from tddt.vie2 import VIE2Solver
+from tddt.keldysh import from_lesser_greater, retarded
+from tddt.vie2 import VIE2Solver, solve_vie2
+from tddt.testing import assert_keldysh_gf_almost_equal
 
 
 class test_vie2(unittest.TestCase):
@@ -186,6 +190,108 @@ class test_vie2(unittest.TestCase):
 
         # Move time axes to the front
         assert_array_almost_equal(g, g_ref, decimal=7)
+
+    def test_solve_vie2_scalar(self):
+        t_mesh = MeshReTime(0.0, 5.0, 101)
+        mesh = MeshProduct(t_mesh, t_mesh)
+
+        # See doc/vie2.nb for derivation of input and reference GFs
+
+        F_g = Gf(mesh=mesh, target_shape=())
+        F_l = Gf(mesh=mesh, target_shape=())
+        Q_g = Gf(mesh=mesh, target_shape=())
+        Q_l = Gf(mesh=mesh, target_shape=())
+
+        for t1, t2 in mesh:
+            F_g[t1, t2] = -1j * (0.9 * exp(-1j * (t1 - t2))
+                                 - 0.8 * exp(-2j * (t1 - t2))
+                                 - 0.1 * exp(-1j * (t1 - 2 * t2)))
+            F_l[t1, t2] = -1j * (-0.1 * exp(-1j * (t1 - t2))
+                                 + 0.2 * exp(-2j * (t1 - t2))
+                                 - 0.1 * exp(-1j * (t1 - 2 * t2)))
+            Q_g[t1, t2] = -1j * (1.0 - 0.1) * exp(-1j * (t1 - t2))
+            Q_l[t1, t2] = -1j * (-0.1) * exp(-1j * (t1 - t2))
+        F = from_lesser_greater(F_l, F_g)
+        Q = from_lesser_greater(Q_l, Q_g)
+
+        G = solve_vie2(F, Q)
+
+        G_ref_g = Gf(mesh=mesh, target_shape=())
+        G_ref_l = Gf(mesh=mesh, target_shape=())
+        l1 = (3 + sqrt(5)) / 2
+        l2 = (3 - sqrt(5)) / 2
+
+        for t1, t2 in mesh:
+            G_ref_l[t1, t2] = -1j * 0.01 * (
+                2 * exp(-1j * (l1 * t1 - l2 * t2))
+                + 2 * exp(-1j * (l2 * t1 - l1 * t2))
+                - (7 - sqrt(5)) * exp(-1j * l1 * (t1 - t2))
+                - (7 + sqrt(5)) * exp(-1j * l2 * (t1 - t2)))
+            G_ref_g[t1, t2] = -1j * 0.01 * (
+                2 * exp(-1j * (l1 * t1 - l2 * t2))
+                + 2 * exp(-1j * (l2 * t1 - l1 * t2))
+                + (43 - 9 * sqrt(5)) * exp(-1j * l1 * (t1 - t2))
+                + (43 + 9 * sqrt(5)) * exp(-1j * l2 * (t1 - t2)))
+        G_ref = from_lesser_greater(G_ref_l, G_ref_g)
+
+        assert_keldysh_gf_almost_equal(G, G_ref, precision=1e-9)
+
+    def test_solve_vie2_matrix(self):
+        t_mesh = MeshReTime(0.0, 5.0, 101)
+
+        bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
+        n_k = 3
+        bz_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k)
+
+        mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
+
+        # See doc/vie2.nb for derivation of input and reference GFs
+
+        F_g = Gf(mesh=mesh, target_shape=(2, 2))
+        F_l = Gf(mesh=mesh, target_shape=(2, 2))
+        Q_g = Gf(mesh=mesh, target_shape=(2, 2))
+        Q_l = Gf(mesh=mesh, target_shape=(2, 2))
+
+        s0 = np.eye(2, dtype=complex)
+        sx = np.array([[0, 1], [1, 0]], dtype=complex)
+        sy = np.array([[0, -1j], [1j, 0]], dtype=complex)
+
+        eps_k = np.array([k.value[0] / np.pi + 1.0 for k in bz_mesh])
+        delta = 1.0
+        for k, eps in zip(bz_mesh, eps_k):
+            for t1, t2 in MeshProduct(t_mesh, t_mesh):
+                dt = t1 - t2
+                e_Q = exp(-1j * eps * dt) * s0
+                Q_g[t1, t2, k] = -1j * (1 - 0.1) * e_Q
+                Q_l[t1, t2, k] = -1j * (-0.1) * e_Q
+                e_F = (cos(dt * delta) * s0
+                       - 1j * sin(dt * delta) * (sx + sy) / sqrt(2))
+                F_g[t1, t2, k] = -1j * (1 - 0.2) * e_F
+                F_l[t1, t2, k] = -1j * (-0.2) * e_F
+
+        F = from_lesser_greater(F_l, F_g)
+        Q = from_lesser_greater(Q_l, Q_g)
+
+        G = solve_vie2(F, Q)
+
+        G_ret_ref = Gf(mesh=mesh, target_shape=(2, 2))
+
+        delta2 = delta ** 2
+        for k, eps in zip(bz_mesh, eps_k):
+            for t1, t2 in MeshProduct(t_mesh, t_mesh):
+                dt = t1 - t2
+                if dt < 0:
+                    continue
+                G_ret_ref[t1, t2, k] = -1j / (2.0 * ((1 + eps)**2 - delta2)) \
+                    * ((exp(1j * (delta + 1) * dt) * (1 + eps - delta)
+                       + exp(-1j * (delta - 1) * dt) * (1 + eps + delta)
+                       + 2 * exp(-1j * eps * dt) * (eps**2 + eps - delta2)) * s0
+                       + (-2 * exp(-1j * eps * dt) * delta
+                       - exp(1j * (delta + 1) * dt) * (eps + 1 - delta)
+                       + exp(-1j * (delta - 1) * dt) * (eps + 1 + delta))
+                       * (sx + sy) / sqrt(2))
+
+        assert_gfs_are_close(retarded(G), G_ret_ref, precision=1e-8)
 
 
 if __name__ == '__main__':
