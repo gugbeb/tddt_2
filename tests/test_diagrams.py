@@ -35,6 +35,10 @@ class test_diagrams(unittest.TestCase):
         # time meshes.
         KeldyshGF.integrator = GregoryIntegrator(2)
 
+    @classmethod
+    def tearDownClass(cls):
+        KeldyshGF.integrator = GregoryIntegrator(5)
+
     def _make_test_keldysh_gf(self, mesh, x, target_shape=None):
         g = KeldyshGF(mesh=mesh, target_shape=target_shape)
         for n, (b0, b1) in enumerate(product(Branch, repeat=2)):
