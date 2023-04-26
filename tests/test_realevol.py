@@ -1,4 +1,5 @@
 import unittest
+import pytest
 from itertools import product
 import numpy as np
 from numpy.testing import assert_array_almost_equal
@@ -65,6 +66,7 @@ class test_realevol(unittest.TestCase):
         cls.params['verbosity'] = 2
         cls.params['lanczos_min_matrix_size'] = 10000
 
+    @pytest.mark.mpi
     def test_compute_keldysh_gf(self):
         gf_struct = [('up', 2), ('dn', 2)]
         gf = compute_keldysh_gf(gf_struct,
@@ -88,6 +90,7 @@ class test_realevol(unittest.TestCase):
             self.assertEqual(g.mesh, g_el.mesh)
             assert_array_almost_equal(g[0, 1].data, g_el.data)
 
+    @pytest.mark.mpi
     def test_compute_keldysh_correlator_2t(self):
         # Correlator <S_{z,0}(t) S_{z,0}(t')>
         Sz = (n('up', 0) - n('dn', 0)) / 2
@@ -115,6 +118,7 @@ class test_realevol(unittest.TestCase):
                                            self.params)
         assert_keldysh_gf_almost_equal(g, g_ref)
 
+    @pytest.mark.mpi
     def test_compute_keldysh_conn_correlator_2t(self):
         N0 = n('up', 0) + n('dn', 0)
         N1 = n('up', 1) + n('dn', 1)
@@ -158,6 +162,7 @@ class test_realevol(unittest.TestCase):
 
         assert_keldysh_gf_almost_equal(rho0rho1, rho0rho1_ref)
 
+    @pytest.mark.mpi
     def test_compute_keldysh_vertex3(self):
         compute_keldysh_vertex3(('up', 0),
                                 ('up', 0),
