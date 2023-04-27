@@ -277,6 +277,9 @@ class test_keldysh(unittest.TestCase):
         assert_array_equal((-g)[CP(BW, t), CP(FW, t)].data,
                            -6.0 * np.ones(non_t_shape))
 
+        # Equality
+        self.assertEqual(g, g)
+
     def test_keldysh_gf_n_args0(self):
         for mesh in (None, MeshProduct()):
             g = KeldyshGF(mesh=mesh)

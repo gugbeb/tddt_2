@@ -194,7 +194,7 @@ class KeldyshGF:
     def __eq__(self, other):
         return self.mesh == other.mesh and \
             self.target_subshapes == other.target_subshapes and \
-            self.components == other.components
+            (self.components == other.components).all()
 
     def __iadd__(self, other):
         assert self.mesh == other.mesh
