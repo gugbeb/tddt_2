@@ -280,40 +280,6 @@ class test_keldysh(unittest.TestCase):
         # Equality
         self.assertEqual(g, g)
 
-    def test_keldysh_gf_n_args0(self):
-        for mesh in (None, MeshProduct()):
-            g = KeldyshGF(mesh=mesh)
-
-            self.assertEqual(g.mesh, MeshProduct())
-            self.assertEqual(g.time_mesh, MeshProduct())
-            self.assertEqual(g.non_time_mesh, MeshProduct())
-            self.assertEqual(g.n_args, 0)
-            self.assertEqual(g.components.shape, ())
-            # __getitem__()
-            g.components[()].data[()] = 2.0
-            self.assertEqual(g[()].data, 2.0)
-            # __setitem__()
-            g[()].data[()] = 3.0
-            self.assertEqual(g.components[()].data[()], 3.0)
-
-    def test_keldysh_gf_n_args0_bz(self):
-        n_k = 10
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
-        g = KeldyshGF(mesh=MeshProduct(bz_mesh))
-
-        self.assertEqual(g.mesh, MeshProduct(bz_mesh))
-        self.assertEqual(g.time_mesh, MeshProduct())
-        self.assertEqual(g.non_time_mesh, MeshProduct(bz_mesh))
-        self.assertEqual(g.n_args, 0)
-        self.assertEqual(g.components.shape, ())
-        for i, k in enumerate(bz_mesh):
-            # __getitem__()
-            g.components[()].data[i] = i
-            self.assertEqual(g[k], i)
-            # __setitem__()
-            g[k] = i + 1
-            self.assertEqual(g.components[()].data[i], i + 1)
-
     def test_keldysh_gf_n_args1(self):
         for mesh in (self.t_mesh1, MeshProduct(self.t_mesh1)):
             g = KeldyshGF(mesh=mesh, target_subshapes=((3,),))

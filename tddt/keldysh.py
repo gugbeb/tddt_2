@@ -72,13 +72,7 @@ class KeldyshGF:
         # Process the supplied mesh
         #
 
-        if mesh is None:  # Constant
-            self.mesh = MeshProduct()
-            self.time_mesh = MeshProduct()
-            self.non_time_mesh = MeshProduct()
-            self.n_args = 0
-
-        elif isinstance(mesh, MeshReTime):  # Single-argument contour function
+        if isinstance(mesh, MeshReTime):  # Single-argument contour function
             self.mesh = MeshProduct(mesh)
             self.time_mesh = self.mesh
             self.non_time_mesh = MeshProduct()
