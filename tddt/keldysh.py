@@ -5,7 +5,7 @@
 from enum import Enum
 from copy import deepcopy
 from itertools import product, takewhile, islice
-from typing import Tuple, Dict, Union, Sequence
+from typing import Tuple, Dict, Union, Sequence, Optional
 import numpy as np
 
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
@@ -63,10 +63,11 @@ class KeldyshGF:
     """Integrator object for contour convolutions"""
     integrator = GregoryIntegrator(5)
 
-    def __init__(self, *,
-                 mesh: Union[MeshReTime, MeshProduct],
-                 target_shape: Tuple[int, ...] = None,
-                 target_subshapes: Tuple[Tuple[int, ...], ...] = None):
+    def __init__(
+            self, *,
+            mesh: Union[MeshReTime, MeshProduct],
+            target_shape: Optional[Tuple[int, ...]] = None,
+            target_subshapes: Optional[Tuple[Tuple[int, ...], ...]] = None):
 
         #
         # Process the supplied mesh
@@ -237,6 +238,48 @@ class KeldyshGF:
         the first argument of 'other'.
         """
         return conv(self, other, [(-1, 0)])
+
+
+def target_dot(g: KeldyshGF,
+               x: np.ndarray,
+               g_arg: int,
+               x_axes: Sequence[int]) -> KeldyshGF:
+    r"""
+    Given a Keldysh Green's function, compute a tensor contraction of its
+    target axes corresponding to a specified argument with a NumPy array.
+
+    g:      Keldysh Green's function.
+    x:      NumPy array to contract with.
+    g_arg:  `g`'s argument to be selected.
+    x_axes: Axes of `x` used in the contraction. Dimensions of these axes must
+            match the selected target subshape of `g`.
+    """
+    assert g_arg < g.n_args, \
+        f"Invalid argument {g_arg} for the {g.n_args}-point GF"
+
+    assert g.target_subshapes[g_arg] == tuple(x.shape[a] for a in x_axes), \
+        "Axis dimensions of g's target space and x disagree"
+
+    res_target_subshapes = list(g.target_subshapes)
+    res_target_subshapes[g_arg] = tuple(s for a, s in enumerate(x.shape)
+                                        if a not in x_axes)
+
+    first_g_tg_axis = len(g.mesh.components) \
+        + sum(len(ss) for ss in g.target_subshapes[:g_arg])
+    g_tg_axis_range = range(first_g_tg_axis,
+                            first_g_tg_axis + len(g.target_subshapes[g_arg]))
+    n_free_x_axes = x.ndim - len(x_axes)
+
+    res = KeldyshGF(mesh=g.mesh, target_subshapes=res_target_subshapes)
+    for br in product(Branch, repeat=g.n_args):
+        res[br].data[:] = np.moveaxis(
+            np.tensordot(g[br].data, x, (g_tg_axis_range, x_axes)),
+            range(-n_free_x_axes, 0),
+            range(first_g_tg_axis, first_g_tg_axis + n_free_x_axes)
+        )
+
+    return res
+
 
 #
 # Functions specific to the 2-point GFs
@@ -468,7 +511,7 @@ def conv(a: KeldyshGF,  # noqa: C901
          b: KeldyshGF,
          coupled_args: Sequence[Tuple[int, int]] = [],
          *,
-         free_args: Tuple[Sequence[int], Sequence[int]] = None,
+         free_args: Optional[Tuple[Sequence[int], Sequence[int]]] = None,
          ) -> KeldyshGF:
     r"""
     Compute a contour convolution and a sum over its corresponding target

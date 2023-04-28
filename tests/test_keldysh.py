@@ -14,6 +14,7 @@ from tddt.keldysh import (Branch,
                           ContourPoint,
                           contour_ordering,
                           KeldyshGF,
+                          target_dot,
                           from_lesser_greater,
                           from_vertex3_pieces,
                           greater,
@@ -47,7 +48,7 @@ class test_keldysh(unittest.TestCase):
         cls.tt_mesh13 = MeshProduct(cls.t_mesh1, cls.t_mesh3)
         cls.ttt_mesh = MeshProduct(cls.t_mesh1, cls.t_mesh2, cls.t_mesh3)
 
-        cls.bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # Square lattice
+        cls.bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
 
     def test_contour_ordering2(self):
         t1, t2 = list(self.t_mesh1)[2:4]
@@ -324,11 +325,11 @@ class test_keldysh(unittest.TestCase):
         # __getitem__()
         g.components[1].data[:] = 2.0
         assert_array_equal(g[Branch.BACKWARD].data,
-                           2.0 * np.ones((self.n_t1, n_k * n_k, 3)))
+                           2.0 * np.ones((self.n_t1, n_k, 3)))
         # __setitem__()
         g[Branch.FORWARD].data[:] = 4.0
         assert_array_equal(g.components[0].data,
-                           4.0 * np.ones((self.n_t1, n_k * n_k, 3)))
+                           4.0 * np.ones((self.n_t1, n_k, 3)))
 
         for i, k in enumerate(bz_mesh):
             # __getitem__()
@@ -374,9 +375,34 @@ class test_keldysh(unittest.TestCase):
 
             for i, j in product(range(2), repeat=2):
                 self.assertEqual(g.components[i, j].data.shape,
-                                 (self.n_t1, self.n_t2, n_k**2) + target_shape)
+                                 (self.n_t1, self.n_t2, n_k) + target_shape)
 
             self._test_gf(g)
+
+    def test_target_dot(self):
+        n_k = 3
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        mesh = MeshProduct(self.t_mesh1, self.t_mesh1, self.t_mesh1, bz_mesh)
+
+        g = KeldyshGF(mesh=mesh, target_subshapes=((2, 3), (4, 5, 6), (3, 2)))
+
+        for a, idx in enumerate(np.ndindex(2, 2, 2)):
+            c = g.components[idx]
+            s = int(np.prod(c.data.shape))
+            c.data[:] = a * np.arange(s).reshape(c.data.shape)
+
+        x = np.arange(2 * 4 * 3 * 6 * 5).reshape((2, 4, 3, 6, 5))
+
+        res = target_dot(g, x, 1, (1, 4, 3))
+
+        ref = KeldyshGF(mesh=mesh, target_subshapes=((2, 3), (2, 3), (3, 2)))
+        for br in product(Branch, repeat=g.n_args):
+            for i, j, k, l, m in np.ndindex(4, 5, 6, 2, 3):
+                ref[br].data[:, :, :, :, :, :, l, m, :, :] += \
+                    g[br].data[:, :, :, :, :, :, i, j, k, :, :] \
+                    * x[l, i, m, k, j]
+
+        assert_keldysh_gf_almost_equal(res, ref, precision=1e-14)
 
     def test_hermitian(self):
         mesh = MeshProduct(self.t_mesh1, self.t_mesh1)
