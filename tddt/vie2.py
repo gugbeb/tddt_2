@@ -265,13 +265,13 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
     assert F.n_args == 2, "F must be a 2-point GF"
     assert F.time_mesh.components[1] == Q.time_mesh.components[0], \
         "Incompatible time meshes of F and Q"
-    assert F.target_subshapes[1] == Q.target_subshapes[0], \
+    assert F.arg_index_shapes[1] == Q.arg_index_shapes[0], \
         "Incompatible target subshapes of F and Q"
     assert F.non_time_mesh == Q.non_time_mesh, \
         "Different non-time meshes of F and Q"
     assert F.time_mesh.components[0] == F.time_mesh.components[1], \
         "Time mesh of F must be square"
-    assert F.target_subshapes[0] == F.target_subshapes[1], \
+    assert F.arg_index_shapes[0] == F.arg_index_shapes[1], \
         "The two target subshapes of F must be equal"
     # FIXME: This check must be enabled as soon as keldysh.conv() is fixed
     # assert_keldysh_gf_almost_equal(
@@ -281,7 +281,7 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
     # )
 
     solver = VIE2Solver(Q.time_mesh.components[0],
-                        Q.target_subshapes[0],
+                        Q.arg_index_shapes[0],
                         gregory_order=Q.integrator.order)
 
     non_time_mesh_shape = tuple(map(len, Q.non_time_mesh.components))
@@ -309,7 +309,7 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
     G_l = Gf(mesh=rhs_l.mesh, target_shape=rhs_l.target_shape)
 
     time_mesh_shape2 = (len(rhs_l.mesh.components[1]),)
-    target_subshape1, target_subshape2 = Q.target_subshapes[:2]
+    target_subshape1, target_subshape2 = Q.arg_index_shapes[:2]
 
     # Iterate over all points of the non-time mesh
     for non_t_idx in np.ndindex(non_time_mesh_shape):

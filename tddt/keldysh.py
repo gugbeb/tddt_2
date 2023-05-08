@@ -67,7 +67,7 @@ class KeldyshGF:
             self, *,
             mesh: Union[MeshReTime, MeshProduct],
             target_shape: Optional[Tuple[int, ...]] = None,
-            target_subshapes: Optional[Tuple[Tuple[int, ...], ...]] = None):
+            arg_index_shapes: Optional[Tuple[Tuple[int, ...], ...]] = None):
 
         #
         # Process the supplied mesh
@@ -97,30 +97,30 @@ class KeldyshGF:
         #
 
         # All subshapes are 0-dimensional by default
-        if (target_shape is None) and (target_subshapes is None):
-            self.target_subshapes = ((),) * self.n_args
+        if (target_shape is None) and (arg_index_shapes is None):
+            self.arg_index_shapes = ((),) * self.n_args
             self.target_shape = ()
 
-        elif (target_shape is None) and (target_subshapes is not None):
-            assert len(target_subshapes) == self.n_args, \
-                f"target_subshapes must contain {self.n_args} elements for " \
+        elif (target_shape is None) and (arg_index_shapes is not None):
+            assert len(arg_index_shapes) == self.n_args, \
+                f"arg_index_shapes must contain {self.n_args} elements for " \
                 f"a {self.n_args}-point function"
-            self.target_subshapes = tuple(target_subshapes)
-            self.target_shape = sum(target_subshapes, ())
+            self.arg_index_shapes = tuple(arg_index_shapes)
+            self.target_shape = sum(arg_index_shapes, ())
 
-        elif (target_shape is not None) and (target_subshapes is None):
+        elif (target_shape is not None) and (arg_index_shapes is None):
             assert len(target_shape) % self.n_args == 0, \
                 f"Target shape must have a multiple of {self.n_args} elements"
             self.target_shape = tuple(target_shape)
             tss_len = len(self.target_shape) // self.n_args
-            self.target_subshapes = tuple(
+            self.arg_index_shapes = tuple(
                 self.target_shape[i:i + tss_len]
                 for i in range(0, len(self.target_shape), tss_len)
             )
 
         else:
             raise RuntimeError(
-                "target_shape and target_subshapes are mutually exclusive"
+                "target_shape and arg_index_shapes are mutually exclusive"
             )
 
         #
@@ -188,18 +188,18 @@ class KeldyshGF:
 
     def __eq__(self, other):
         return self.mesh == other.mesh and \
-            self.target_subshapes == other.target_subshapes and \
+            self.arg_index_shapes == other.arg_index_shapes and \
             (self.components == other.components).all()
 
     def __iadd__(self, other):
         assert self.mesh == other.mesh
-        assert self.target_subshapes == other.target_subshapes
+        assert self.arg_index_shapes == other.arg_index_shapes
         self.components += other.components
         return self
 
     def __isub__(self, other):
         assert self.mesh == other.mesh
-        assert self.target_subshapes == other.target_subshapes
+        assert self.arg_index_shapes == other.arg_index_shapes
         self.components -= other.components
         return self
 
@@ -257,20 +257,20 @@ def target_dot(g: KeldyshGF,
     assert g_arg < g.n_args, \
         f"Invalid argument {g_arg} for the {g.n_args}-point GF"
 
-    assert g.target_subshapes[g_arg] == tuple(x.shape[a] for a in x_axes), \
+    assert g.arg_index_shapes[g_arg] == tuple(x.shape[a] for a in x_axes), \
         "Axis dimensions of g's target space and x disagree"
 
-    res_target_subshapes = list(g.target_subshapes)
-    res_target_subshapes[g_arg] = tuple(s for a, s in enumerate(x.shape)
+    res_arg_index_shapes = list(g.arg_index_shapes)
+    res_arg_index_shapes[g_arg] = tuple(s for a, s in enumerate(x.shape)
                                         if a not in x_axes)
 
     first_g_tg_axis = len(g.mesh.components) \
-        + sum(len(ss) for ss in g.target_subshapes[:g_arg])
+        + sum(len(ss) for ss in g.arg_index_shapes[:g_arg])
     g_tg_axis_range = range(first_g_tg_axis,
-                            first_g_tg_axis + len(g.target_subshapes[g_arg]))
+                            first_g_tg_axis + len(g.arg_index_shapes[g_arg]))
     n_free_x_axes = x.ndim - len(x_axes)
 
-    res = KeldyshGF(mesh=g.mesh, target_subshapes=res_target_subshapes)
+    res = KeldyshGF(mesh=g.mesh, arg_index_shapes=res_arg_index_shapes)
     for br in product(Branch, repeat=g.n_args):
         res[br].data[:] = np.moveaxis(
             np.tensordot(g[br].data, x, (g_tg_axis_range, x_axes)),
@@ -369,12 +369,12 @@ def herm_conj(g: KeldyshGF) -> KeldyshGF:
     mesh_conj = MeshProduct(g.time_mesh[1],
                             g.time_mesh[0],
                             *g.non_time_mesh.components)
-    target_shape_conj = g.target_subshapes[1] + g.target_subshapes[0]
+    target_shape_conj = g.arg_index_shapes[1] + g.arg_index_shapes[0]
 
     g_conj_g = Gf(mesh=mesh_conj, target_shape=target_shape_conj)
     g_conj_l = Gf(mesh=mesh_conj, target_shape=target_shape_conj)
 
-    nli, nri = len(g.target_subshapes[0]), len(g.target_subshapes[1])
+    nli, nri = len(g.arg_index_shapes[0]), len(g.arg_index_shapes[1])
 
     axes_from = (0, 1, *range(-1, - nli - 1, -1))
     axes_to = (1, 0, *range(-1 - nli, -2 * nli - 1, -1))
@@ -393,10 +393,10 @@ def is_hermitian(g: KeldyshGF, *, atol=.0) -> bool:
 
     if g.time_mesh.components[0] != g.time_mesh.components[1]:
         return False
-    if g.target_subshapes[0] != g.target_subshapes[1]:
+    if g.arg_index_shapes[0] != g.arg_index_shapes[1]:
         return False
 
-    nli = len(g.target_subshapes[0])
+    nli = len(g.arg_index_shapes[0])
 
     axes_from = (0, 1, *range(-1, - nli - 1, -1))
     axes_to = (1, 0, *range(-1 - nli, -2 * nli - 1, -1))
@@ -425,10 +425,10 @@ def from_lesser_greater(g_l: Gf, g_g: Gf, n_left_target_axes=None) -> KeldyshGF:
         assert len(g_l.target_shape) % 2 == 0
         n_left_target_axes = len(g_l.target_shape) // 2
 
-    target_subshapes = (g_l.target_shape[:n_left_target_axes],
+    arg_index_shapes = (g_l.target_shape[:n_left_target_axes],
                         g_l.target_shape[n_left_target_axes:])
 
-    g = KeldyshGF(mesh=g_l.mesh, target_subshapes=target_subshapes)
+    g = KeldyshGF(mesh=g_l.mesh, arg_index_shapes=arg_index_shapes)
 
     #
     # Fill Keldysh components
@@ -484,13 +484,13 @@ def from_vertex3_pieces(G: Dict[Tuple[int, int, int], Gf]) -> KeldyshGF:
     ts_len = len(G0.target_shape)
     assert ts_len % 3 == 0, \
         "Target shape of the pieces must contain a multiple of 3 elements"
-    target_subshapes = (
+    arg_index_shapes = (
         G0.target_shape[:ts_len // 3],
         G0.target_shape[ts_len // 3: 2 * ts_len // 3],
         G0.target_shape[2 * ts_len // 3:]
     )
 
-    Lambda = KeldyshGF(mesh=G0.mesh, target_subshapes=target_subshapes)
+    Lambda = KeldyshGF(mesh=G0.mesh, arg_index_shapes=arg_index_shapes)
 
     #
     # Fill Keldysh components
@@ -672,8 +672,8 @@ def conv(a: KeldyshGF,  # noqa: C901
 
     # Check subshapes compatibility
     for arg_a, arg_b in conv_args:
-        subshape_a = a.target_subshapes[arg_a]
-        subshape_b = b.target_subshapes[arg_b]
+        subshape_a = a.arg_index_shapes[arg_a]
+        subshape_b = b.arg_index_shapes[arg_b]
         assert subshape_a == subshape_b, \
             f"Incompatible target sub-shapes {subshape_a} and {subshape_b} for"\
             f" the coupled argument pair ({arg_a}, {arg_b})"
@@ -682,15 +682,15 @@ def conv(a: KeldyshGF,  # noqa: C901
     subshapes_res = [None] * n_args_res
     for arg_a, arg_res in enumerate(arg_indices_a):
         if arg_res < n_args_res:
-            subshapes_res[arg_res] = a.target_subshapes[arg_a]
+            subshapes_res[arg_res] = a.arg_index_shapes[arg_a]
     for arg_b, arg_res in enumerate(arg_indices_b):
         if arg_res < n_args_res:
-            subshapes_res[arg_res] = b.target_subshapes[arg_b]
+            subshapes_res[arg_res] = b.arg_index_shapes[arg_b]
 
     # Collect sub-shapes of all n_args_res + n_conv_args arguments
     subshapes_all = subshapes_res[:]
     for arg_a, _ in conv_args:
-        subshapes_all.append(a.target_subshapes[arg_a])
+        subshapes_all.append(a.arg_index_shapes[arg_a])
 
     # Compile a partitioned list of target subscripts
     tgs_it = iter(subscripts['target'])
@@ -712,7 +712,7 @@ def conv(a: KeldyshGF,  # noqa: C901
     subs = f"{subs_a}," + ','.join(subs_w) + f",{subs_b}->{subs_res}"
 
     res = KeldyshGF(mesh=MeshProduct(*mesh_comps_res),
-                    target_subshapes=subshapes_res)
+                    arg_index_shapes=subshapes_res)
 
     for br in product(Branch, repeat=n_args_res + n_conv_args):
         br_a = tuple(br[i] for i in arg_indices_a)

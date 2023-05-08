@@ -19,7 +19,7 @@ def assert_keldysh_gf_almost_equal(g: KeldyshGF,
     close.
     """
     assert g.mesh == g_ref.mesh, err_msg
-    assert g.target_subshapes == g_ref.target_subshapes, err_msg
+    assert g.arg_index_shapes == g_ref.arg_index_shapes, err_msg
     try:
         for br in product(Branch, repeat=g.n_args):
             assert_gfs_are_close(g[br], g_ref[br], precision)

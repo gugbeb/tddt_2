@@ -283,7 +283,7 @@ class test_keldysh(unittest.TestCase):
 
     def test_keldysh_gf_n_args1(self):
         for mesh in (self.t_mesh1, MeshProduct(self.t_mesh1)):
-            g = KeldyshGF(mesh=mesh, target_subshapes=((3,),))
+            g = KeldyshGF(mesh=mesh, arg_index_shapes=((3,),))
 
             self.assertEqual(g.mesh, MeshProduct(self.t_mesh1))
             self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh1))
@@ -312,7 +312,7 @@ class test_keldysh(unittest.TestCase):
         n_k = 10
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(self.t_mesh1, bz_mesh)
-        g = KeldyshGF(mesh=mesh, target_subshapes=((3,),))
+        g = KeldyshGF(mesh=mesh, arg_index_shapes=((3,),))
 
         self.assertEqual(g.mesh, mesh)
         self.assertEqual(g.time_mesh, MeshProduct(self.t_mesh1))
@@ -384,7 +384,7 @@ class test_keldysh(unittest.TestCase):
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(self.t_mesh1, self.t_mesh1, self.t_mesh1, bz_mesh)
 
-        g = KeldyshGF(mesh=mesh, target_subshapes=((2, 3), (4, 5, 6), (3, 2)))
+        g = KeldyshGF(mesh=mesh, arg_index_shapes=((2, 3), (4, 5, 6), (3, 2)))
 
         for a, idx in enumerate(np.ndindex(2, 2, 2)):
             c = g.components[idx]
@@ -395,7 +395,7 @@ class test_keldysh(unittest.TestCase):
 
         res = target_dot(g, x, 1, (1, 4, 3))
 
-        ref = KeldyshGF(mesh=mesh, target_subshapes=((2, 3), (2, 3), (3, 2)))
+        ref = KeldyshGF(mesh=mesh, arg_index_shapes=((2, 3), (2, 3), (3, 2)))
         for br in product(Branch, repeat=g.n_args):
             for i, j, k, l, m in np.ndindex(4, 5, 6, 2, 3):
                 ref[br].data[:, :, :, :, :, :, l, m, :, :] += \
@@ -467,8 +467,8 @@ class test_keldysh(unittest.TestCase):
         assert_gfs_are_close(lesser(g), -conj(lesser(g_hc)))
         assert_gfs_are_close(retarded(g), conj(advanced(g_hc)))
 
-    def _make_test_keldysh_gf(self, mesh, x, target_subshapes=None):
-        g = KeldyshGF(mesh=mesh, target_subshapes=target_subshapes)
+    def _make_test_keldysh_gf(self, mesh, x, arg_index_shapes=None):
+        g = KeldyshGF(mesh=mesh, arg_index_shapes=arg_index_shapes)
         for n, (b0, b1) in enumerate(product(Branch, repeat=2)):
             g_comp = g[b0, b1]
             s = g_comp.data.size
@@ -505,7 +505,7 @@ class test_keldysh(unittest.TestCase):
         g2 = self._make_test_keldysh_gf(self.tt_mesh23, 2, ((4,), (1,)))
         g1g2 = g1 @ g2
 
-        g1g2_ref = KeldyshGF(mesh=self.tt_mesh13, target_subshapes=((2,), (1,)))
+        g1g2_ref = KeldyshGF(mesh=self.tt_mesh13, arg_index_shapes=((2,), (1,)))
         for i, k, j, m, l, n in product(range(self.n_t1),
                                         range(self.n_t2),
                                         range(self.n_t3),
@@ -572,7 +572,7 @@ class test_keldysh(unittest.TestCase):
         g2 = self._make_test_keldysh_gf(ttk_mesh23, 2, ((3,), (1,)))
         g1g2 = g1 @ g2
 
-        g1g2_ref = KeldyshGF(mesh=ttk_mesh13, target_subshapes=((2,), (1,)))
+        g1g2_ref = KeldyshGF(mesh=ttk_mesh13, arg_index_shapes=((2,), (1,)))
         for i, k, j, K, m, l, n in product(range(self.n_t1),
                                            range(self.n_t2),
                                            range(self.n_t3),
@@ -647,7 +647,7 @@ class test_keldysh(unittest.TestCase):
         g2 = self._make_test_keldysh_gf(ttk2_mesh23, 2, ((3,), (1,)))
         g1g2 = g1 @ g2
 
-        g1g2_ref = KeldyshGF(mesh=ttk12_mesh13, target_subshapes=((2,), (1,)))
+        g1g2_ref = KeldyshGF(mesh=ttk12_mesh13, arg_index_shapes=((2,), (1,)))
         for i, k, j, K1, K2, m, l, n in product(range(self.n_t1),
                                                 range(self.n_t2),
                                                 range(self.n_t3),
