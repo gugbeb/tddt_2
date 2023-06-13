@@ -6,8 +6,10 @@ LABEL version="0.3.0"
 
 USER root
 RUN useradd -m -s /bin/bash -u 999 build && echo "build:build" | chpasswd
+RUN usermod -aG sudo build
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends make g++-10 apt-utils
+    apt-get install -y --no-install-recommends \
+    make g++-10 apt-utils vim vim-python-jedi
 
 ENV OMPI_ALLOW_RUN_AS_ROOT=1 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
 
