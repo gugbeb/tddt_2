@@ -25,9 +25,6 @@ class test_retime(unittest.TestCase):
         cls.t_mesh = MeshReTime(0, cls.t_max, cls.n_t)
 
         cls.bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
-        cls.n_k = 5
-        cls.bz_mesh = MeshBrillouinZone(BrillouinZone(cls.bl), cls.n_k)
-        cls.eps_k = np.array([k.value[0] / np.pi + 1.0 for k in cls.bz_mesh])
 
     def _make_g_l_g_g_scalar(self, x=1.0):
         mesh = MeshProduct(self.t_mesh, self.t_mesh)
@@ -54,12 +51,14 @@ class test_retime(unittest.TestCase):
             g_l[t1, t2] = -1j * (-0.1 * x) * e
         return g_l, g_g
 
-    def _make_g_l_g_g_matrix_bz(self, x=1.0):
-        mesh = MeshProduct(self.t_mesh, self.t_mesh, self.bz_mesh)
+    def _make_g_l_g_g_matrix_bz(self, bz_mesh, x=1.0):
+        mesh = MeshProduct(self.t_mesh, self.t_mesh, bz_mesh)
+
+        eps_k = np.array([k.value[0] / np.pi + 1.0 for k in bz_mesh])
 
         g_l = Gf(mesh=mesh, target_shape=(3, 3))
         g_g = Gf(mesh=mesh, target_shape=(3, 3))
-        for k, eps in zip(self.bz_mesh, self.eps_k):
+        for k, eps in zip(bz_mesh, eps_k):
             H = np.array([[eps, 0.5, -0.1j],
                           [0.5, 2.0 * eps, 0.5],
                           [0.1j, 0.5, 3.0 * eps]])
@@ -89,14 +88,15 @@ class test_retime(unittest.TestCase):
         assert_gfs_are_close(g_adv, g_adv_ref, precision=1e-12)
 
         # Matrix-valued GF with an extra mesh component
-        g_l, g_g = self._make_g_l_g_g_matrix_bz()
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), 5)
+        g_l, g_g = self._make_g_l_g_g_matrix_bz(bz_mesh)
         g = from_lesser_greater(g_l, g_g)
 
         g_adv = conj(retarded(g))
         g_adv_ref = advanced(g)
         assert_gfs_are_close(g_adv, g_adv_ref, precision=1e-12)
 
-    def test_conv(self):
+    def test_conv_scalar(self):
         order = 5
         w = GregoryIntegrator(order).weights(self.t_mesh)
 
@@ -127,6 +127,10 @@ class test_retime(unittest.TestCase):
         assert_gfs_are_close(a_ret_b_l, a_ret_b_l_ref, precision=1e-12)
         assert_gfs_are_close(a_l_b_adv, a_l_b_adv_ref, precision=1e-12)
 
+    def test_conv_matrix(self):
+        order = 5
+        w = GregoryIntegrator(order).weights(self.t_mesh)
+
         # Matrix-valued GF
         a_l, a_g = self._make_g_l_g_g_matrix(1.0)
         b_l, b_g = self._make_g_l_g_g_matrix(2.0)
@@ -156,9 +160,16 @@ class test_retime(unittest.TestCase):
         assert_gfs_are_close(a_ret_b_l, a_ret_b_l_ref, precision=1e-12)
         assert_gfs_are_close(a_l_b_adv, a_l_b_adv_ref, precision=1e-12)
 
+    def test_conv_matrix_bz(self):
+        order = 5
+        w = GregoryIntegrator(order).weights(self.t_mesh)
+
         # Matrix-valued GF with an extra mesh component
-        a_l, a_g = self._make_g_l_g_g_matrix_bz(1.0)
-        b_l, b_g = self._make_g_l_g_g_matrix_bz(2.0)
+        n_k = 5
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+
+        a_l, a_g = self._make_g_l_g_g_matrix_bz(bz_mesh, 1.0)
+        b_l, b_g = self._make_g_l_g_g_matrix_bz(bz_mesh, 2.0)
         a = from_lesser_greater(a_l, a_g)
         b = from_lesser_greater(b_l, b_g)
 
@@ -172,7 +183,7 @@ class test_retime(unittest.TestCase):
         a_l_b_adv_ref = Gf(mesh=a_l_b_adv.mesh, target_shape=(3, 3))
         for n, m, K, a, b, c in product(range(self.n_t),
                                         range(self.n_t),
-                                        range(self.n_k),
+                                        range(n_k),
                                         *[range(3)] * 3):
             a_ret_b_l_ref.data[n, m, K, a, b] += sum(
                 w[n, j]
@@ -182,6 +193,48 @@ class test_retime(unittest.TestCase):
             a_l_b_adv_ref.data[n, m, K, a, b] += sum(
                 w[m, j]
                 * a_l.data[n, j, K, a, c] * b_adv_ext.data[j, m, K, c, b]
+                for j in range((m if (m > order) else order) + 1)
+            )
+
+        assert_gfs_are_close(a_ret_b_l, a_ret_b_l_ref, precision=1e-12)
+        assert_gfs_are_close(a_l_b_adv, a_l_b_adv_ref, precision=1e-12)
+
+    def test_conv_matrix_bz1_bz2(self):
+        order = 5
+        w = GregoryIntegrator(order).weights(self.t_mesh)
+
+        # Matrix-valued GF with an extra mesh component
+        n_k1 = 4
+        bz1_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k1)
+        n_k2 = 3
+        bz2_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k2)
+
+        a_l, a_g = self._make_g_l_g_g_matrix_bz(bz1_mesh, 1.0)
+        b_l, b_g = self._make_g_l_g_g_matrix_bz(bz2_mesh, 2.0)
+        a = from_lesser_greater(a_l, a_g)
+        b = from_lesser_greater(b_l, b_g)
+
+        a_ret_ext = retarded_ext(a)
+        b_adv_ext = advanced_ext(b)
+
+        a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
+        a_l_b_adv = conv_l_adv(a_l, b_adv_ext)
+
+        a_ret_b_l_ref = Gf(mesh=a_ret_b_l.mesh, target_shape=(3, 3))
+        a_l_b_adv_ref = Gf(mesh=a_l_b_adv.mesh, target_shape=(3, 3))
+        for n, m, K1, K2, a, b, c in product(range(self.n_t),
+                                             range(self.n_t),
+                                             range(n_k1),
+                                             range(n_k2),
+                                             *[range(3)] * 3):
+            a_ret_b_l_ref.data[n, m, K1, K2, a, b] += sum(
+                w[n, j]
+                * a_ret_ext.data[n, j, K1, a, c] * b_l.data[j, m, K2, c, b]
+                for j in range((n if (n > order) else order) + 1)
+            )
+            a_l_b_adv_ref.data[n, m, K1, K2, a, b] += sum(
+                w[m, j]
+                * a_l.data[n, j, K1, a, c] * b_adv_ext.data[j, m, K2, c, b]
                 for j in range((m if (m > order) else order) + 1)
             )
 

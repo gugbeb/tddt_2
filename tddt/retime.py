@@ -63,6 +63,32 @@ def conj(g: Gf, *, n_left_indices=None) -> Gf:
     return g_conj
 
 
+def _make_nontime_mesh_and_subs(a_mesh, b_mesh):
+    nt_mesh_a = a_mesh.components[2:]
+    nt_mesh_b = b_mesh.components[2:]
+
+    nts = subscripts['nontime']
+    if nt_mesh_a == nt_mesh_b:
+        # If the non-time components of the meshes agree, then we
+        # use the same non-time mesh for the result
+        ss = nts[:len(nt_mesh_a)]
+        subs_a_nt = ss
+        subs_b_nt = ss
+        subs_res_nt = ss
+        mesh_comps_res = nt_mesh_a
+    else:
+        # Otherwise the result is defined on a direct product of the meshes.
+        ss = nts[:len(nt_mesh_a)]
+        subs_a_nt = ss
+        subs_res_nt = ss
+        ss = nts[len(nt_mesh_a):len(nt_mesh_a) + len(nt_mesh_b)]
+        subs_b_nt = ss
+        subs_res_nt += ss
+        mesh_comps_res = nt_mesh_a + nt_mesh_b
+
+    return subs_a_nt, subs_b_nt, subs_res_nt, mesh_comps_res
+
+
 def _make_target_shape_subs(a_nli, a_nri, b_nli, b_nri):
     tgs = subscripts['target']
     subs_a_tg = tgs[:a_nli + a_nri]
@@ -93,15 +119,24 @@ def conv_ret_l(a_ret: Gf,
     assert _is_2t_gf(a_ret)
     assert _is_2t_gf(b_l)
 
+    # Handle the time components of the meshes
     assert a_ret.mesh.components[1] == b_l.mesh.components[0], \
            "Incompatible time meshes of a_ret and b_l"
-    assert a_ret.mesh.components[2:] == b_l.mesh.components[2:], \
-           "Different non-time meshes of a_ret and b_l"
 
-    mesh = MeshProduct(a_ret.mesh.components[0],
-                       b_l.mesh.components[1],
-                       *a_ret.mesh.components[2:])
+    ts = subscripts['time']
+    subs_a_ret_t = ts[0] + ts[2]
+    subs_b_l_t = ts[2] + ts[1]
+    subs_res_t = ts[0] + ts[1]
+    subs_w = subs_a_ret_t
+    t_mesh_comps_res = [a_ret.mesh.components[0], b_l.mesh.components[1]]
 
+    # Handle the non-time components of the meshes
+    subs_a_ret_nt, subs_b_l_nt, subs_res_nt, nt_mesh_comps_res = \
+        _make_nontime_mesh_and_subs(a_ret.mesh, b_l.mesh)
+
+    mesh = MeshProduct(*t_mesh_comps_res, *nt_mesh_comps_res)
+
+    # Handle the targets
     a_ret_nli, a_ret_nri = _extract_nli_nri(
         a_ret,
         a_ret_n_left_indices,
@@ -115,32 +150,23 @@ def conv_ret_l(a_ret: Gf,
     assert a_ret.target_shape[a_ret_nli:] == b_l.target_shape[:b_l_nli], \
         "Incompatible target shapes of a_ret and b_l"
 
-    # Generate einsum() subscripts
-
-    ts = subscripts['time']
-    subs_a_ret_t = ts[0] + ts[2]
-    subs_b_l_t = ts[2] + ts[1]
-    subs_res_t = ts[0] + ts[1]
-    subs_w = subs_a_ret_t
-
-    subs_nt = subscripts['nontime'][:len(a_ret.mesh.components[2:])]
-
     subs_a_ret_tg, subs_b_l_tg, subs_res_tg = \
         _make_target_shape_subs(a_ret_nli, a_ret_nri, b_l_nli, b_l_nri)
 
     target_shape_res = \
         a_ret.target_shape[:a_ret_nli] + b_l.target_shape[b_l_nli:]
 
-    # Perform summation
-
-    subs_a_ret = subs_a_ret_t + subs_nt + subs_a_ret_tg
-    subs_b_l = subs_b_l_t + subs_nt + subs_b_l_tg
-    subs_res = subs_res_t + subs_nt + subs_res_tg
+    # Generate einsum() subscripts
+    subs_a_ret = subs_a_ret_t + subs_a_ret_nt + subs_a_ret_tg
+    subs_b_l = subs_b_l_t + subs_b_l_nt + subs_b_l_tg
+    subs_res = subs_res_t + subs_res_nt + subs_res_tg
 
     subs = f"{subs_a_ret},{subs_w},{subs_b_l}->{subs_res}"
 
+    # Perform summation
     res = Gf(mesh=mesh, target_shape=target_shape_res)
 
+    # Eqs. (117)-(118) of the NESSi paper.
     w = GregoryIntegrator(gregory_order).weights(a_ret.mesh.components[1])
     res.data[:] = np.einsum(subs, a_ret.data, w, b_l.data, optimize="optimal")
 
@@ -168,15 +194,24 @@ def conv_l_adv(a_l: Gf,
     assert _is_2t_gf(a_l)
     assert _is_2t_gf(b_adv)
 
+    # Handle the time components of the meshes
     assert a_l.mesh.components[1] == b_adv.mesh.components[0], \
            "Incompatible time meshes of a_l and b_adv"
-    assert a_l.mesh.components[2:] == b_adv.mesh.components[2:], \
-           "Different non-time meshes of a_l and b_adv"
 
-    mesh = MeshProduct(a_l.mesh.components[0],
-                       b_adv.mesh.components[1],
-                       *a_l.mesh.components[2:])
+    ts = subscripts['time']
+    subs_a_l_t = ts[0] + ts[2]
+    subs_b_adv_t = ts[2] + ts[1]
+    subs_res_t = ts[0] + ts[1]
+    subs_w = ts[1] + ts[2]
+    t_mesh_comps_res = [a_l.mesh.components[0], b_adv.mesh.components[1]]
 
+    # Handle the non-time components of the meshes
+    subs_a_l_nt, subs_b_adv_nt, subs_res_nt, nt_mesh_comps_res = \
+        _make_nontime_mesh_and_subs(a_l.mesh, b_adv.mesh)
+
+    mesh = MeshProduct(*t_mesh_comps_res, *nt_mesh_comps_res)
+
+    # Handle the targets
     a_l_nli, a_l_nri = _extract_nli_nri(
         a_l,
         a_l_n_left_indices,
@@ -190,32 +225,23 @@ def conv_l_adv(a_l: Gf,
     assert a_l.target_shape[a_l_nli:] == b_adv.target_shape[:b_adv_nli], \
         "Incompatible target shapes of a_l and b_adv"
 
-    # Generate einsum() subscripts
-
-    ts = subscripts['time']
-    subs_a_l_t = ts[0] + ts[2]
-    subs_b_adv_t = ts[2] + ts[1]
-    subs_res_t = ts[0] + ts[1]
-    subs_w = ts[1] + ts[2]
-
-    subs_nt = subscripts['nontime'][:len(a_l.mesh.components[2:])]
-
     subs_a_l_tg, subs_b_adv_tg, subs_res_tg = \
         _make_target_shape_subs(a_l_nli, a_l_nri, b_adv_nli, b_adv_nri)
 
     target_shape_res = \
         a_l.target_shape[:a_l_nli] + b_adv.target_shape[b_adv_nli:]
 
-    # Perform summation
-
-    subs_a_l = subs_a_l_t + subs_nt + subs_a_l_tg
-    subs_b_adv = subs_b_adv_t + subs_nt + subs_b_adv_tg
-    subs_res = subs_res_t + subs_nt + subs_res_tg
+    # Generate einsum() subscripts
+    subs_a_l = subs_a_l_t + subs_a_l_nt + subs_a_l_tg
+    subs_b_adv = subs_b_adv_t + subs_b_adv_nt + subs_b_adv_tg
+    subs_res = subs_res_t + subs_res_nt + subs_res_tg
 
     subs = f"{subs_a_l},{subs_w},{subs_b_adv}->{subs_res}"
 
+    # Perform summation
     res = Gf(mesh=mesh, target_shape=target_shape_res)
 
+    # Eqs. (119)-(120) of the NESSi paper.
     w = GregoryIntegrator(gregory_order).weights(a_l.mesh.components[1])
     res.data[:] = np.einsum(subs, a_l.data, w, b_adv.data, optimize="optimal")
 
