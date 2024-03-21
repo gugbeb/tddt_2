@@ -98,6 +98,119 @@ def _make_target_shape_subs(a_nli, a_nri, b_nli, b_nri):
     return subs_a_tg, subs_b_tg, subs_res_tg
 
 
+def conv_ret_ret(a_ret: Gf,
+                 b_ret: Gf,
+                 a_ret_n_left_indices=None,
+                 gregory_order=5) -> Gf:
+    r"""
+    Compute a real-time convolution of two extended retarded functions,
+
+    F_{a, b}(t, t') =
+        \sum_c \int_{t'}^t d\bar t A^r_{a, c}(t, \bar t) B^r_{c, b}(\bar t, t').
+
+    a_ret: The extended retarded function A^r(t, t').
+    b_ret: The extended retarded function B^r(t, t').
+    a_ret_n_left_indices: Number of axes in A^r's target shape corresponding to
+                          the multi-index 'a'. By default, a half of all axes.
+    gregory_order: Order of the Gregory quadrature rule used to do the
+                   convolution.
+    """
+    assert _is_2t_gf(a_ret)
+    assert _is_2t_gf(b_ret)
+
+    # Handle the time components of the meshes
+    assert a_ret.mesh.components[0] == a_ret.mesh.components[1], \
+           "The two components of a_ret's time mesh must be the same"
+    assert b_ret.mesh.components[0] == b_ret.mesh.components[1], \
+           "The two components of b_ret's time mesh must be the same"
+    assert a_ret.mesh.components[1] == b_ret.mesh.components[0], \
+           "Incompatible time meshes of a_ret and b_ret"
+
+    t_mesh = a_ret.mesh.components[0]
+
+    # Handle the non-time components of the meshes
+    subs_a_ret_nt, subs_b_ret_nt, subs_res_nt, nt_mesh_comps_res = \
+        _make_nontime_mesh_and_subs(a_ret.mesh, b_ret.mesh)
+
+    mesh = MeshProduct(t_mesh, t_mesh, *nt_mesh_comps_res)
+
+    # Handle the targets
+    a_ret_nli, a_ret_nri = _extract_nli_nri(
+        a_ret,
+        a_ret_n_left_indices,
+        "a_ret_n_left_indices must be provided when the target shape of A^r "
+        "has an odd number of dimensions"
+    )
+
+    b_ret_nli = a_ret_nri
+    b_ret_nri = len(b_ret.target_shape) - b_ret_nli
+
+    assert a_ret.target_shape[a_ret_nli:] == b_ret.target_shape[:b_ret_nli], \
+        "Incompatible target shapes of a_ret and b_ret"
+
+    subs_a_ret_tg, subs_b_ret_tg, subs_res_tg = \
+        _make_target_shape_subs(a_ret_nli, a_ret_nri, b_ret_nli, b_ret_nri)
+
+    target_shape_res = \
+        a_ret.target_shape[:a_ret_nli] + b_ret.target_shape[b_ret_nli:]
+
+    # Generate einsum() subscripts
+    ts = subscripts['time']
+    subs_a_ret_t = ts[1]
+    subs_b_ret_t = ts[1] + ts[0]
+    subs_res_t = ts[0]
+
+    subs_a_ret = subs_a_ret_t + subs_a_ret_nt + subs_a_ret_tg
+    subs_b_ret = subs_b_ret_t + subs_b_ret_nt + subs_b_ret_tg
+    subs_res = subs_res_t + subs_res_nt + subs_res_tg
+
+    # Perform summation (Eq. (110) of the NESSi paper).
+    res = Gf(mesh=mesh, target_shape=target_shape_res)
+    integrator = GregoryIntegrator(gregory_order)
+
+    subs_I = ts[0] + ts[1]
+    k_slice = slice(integrator.order + 1)
+    delta_I = t_mesh.delta * integrator.I
+
+    subs = f"{subs_a_ret},{subs_I},{subs_b_ret}->{subs_res}"
+    # Eq. (110), line 3
+    for n in range(integrator.order + 1):
+        np.einsum(subs,
+                  a_ret.data[n, k_slice, ...],
+                  delta_I[:(n + 1), n, :],
+                  b_ret.data[k_slice, :(n + 1), ...],
+                  out=res.data[n, :(n + 1), ...],
+                  optimize="optimal")
+
+    w = integrator.weights(t_mesh)
+
+    subs_a_ret = ts[0] + subs_a_ret_nt + subs_a_ret_tg
+    subs_b_ret = ts[0] + subs_b_ret_nt + subs_b_ret_tg
+    subs_res = subs_res_nt + subs_res_tg
+    subs_w = ts[0]
+    subs = f"{subs_a_ret},{subs_w},{subs_b_ret}->{subs_res}"
+
+    for n in range(integrator.order + 1, len(t_mesh)):
+        # Eq. (110), line 1
+        for m in range(n - integrator.order):
+            np.einsum(subs,
+                      a_ret.data[n, m:(n + 1), ...],
+                      w[n - m, :(n - m + 1)],
+                      b_ret.data[m:(n + 1), m, ...],
+                      out=res.data[n, m, ...],
+                      optimize="optimal")
+        # Eq. (110), line 2
+        for m in range(n - integrator.order, n + 1):
+            np.einsum(subs,
+                      a_ret.data[n, n:(n - integrator.order - 1):-1, ...],
+                      w[n - m, k_slice],
+                      b_ret.data[n:(n - integrator.order - 1):-1, m, ...],
+                      out=res.data[n, m, ...],
+                      optimize="optimal")
+
+    return res
+
+
 def conv_ret_l(a_ret: Gf,
                b_l: Gf,
                a_ret_n_left_indices=None,

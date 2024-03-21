@@ -6,7 +6,7 @@ from triqs.gf import MeshReTime, MeshBrillouinZone, MeshProduct, Gf
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
-from tddt.retime import conj, conv_ret_l, conv_l_adv
+from tddt.retime import conj, conv_ret_ret, conv_ret_l, conv_l_adv
 from tddt.keldysh import (from_lesser_greater,
                           retarded,
                           retarded_ext,
@@ -20,8 +20,8 @@ class test_retime(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.t_max = 6.0
-        cls.n_t = 7
+        cls.t_max = 20.0
+        cls.n_t = 11
         cls.t_mesh = MeshReTime(0, cls.t_max, cls.n_t)
 
         cls.bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
@@ -98,7 +98,8 @@ class test_retime(unittest.TestCase):
 
     def test_conv_scalar(self):
         order = 5
-        w = GregoryIntegrator(order).weights(self.t_mesh)
+        integrator = GregoryIntegrator(order)
+        w = integrator.weights(self.t_mesh)
 
         # Scalar-valued GF
         a_l, a_g = self._make_g_l_g_g_scalar(1.0)
@@ -107,6 +108,7 @@ class test_retime(unittest.TestCase):
         b = from_lesser_greater(b_l, b_g)
 
         a_ret_ext = retarded_ext(a)
+        b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
         a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
@@ -127,9 +129,37 @@ class test_retime(unittest.TestCase):
         assert_gfs_are_close(a_ret_b_l, a_ret_b_l_ref, precision=1e-12)
         assert_gfs_are_close(a_l_b_adv, a_l_b_adv_ref, precision=1e-12)
 
+        a_ret_b_ret = conv_ret_ret(a_ret_ext, b_ret_ext)
+
+        a_ret_b_ret_ref = Gf(mesh=a_ret_b_ret.mesh, target_shape=())
+        for n, m in product(range(self.n_t), range(self.n_t)):
+            if n < m:
+                continue
+            if n <= order:
+                a_ret_b_ret_ref.data[n, m] = self.t_mesh.delta * sum(
+                    integrator.I[m, n, j]
+                    * a_ret_ext.data[n, j] * b_ret_ext.data[j, m]
+                    for j in range(order + 1)
+                )
+            elif n - m > order:
+                a_ret_b_ret_ref.data[n, m] = sum(
+                    w[n - m, j - m]
+                    * a_ret_ext.data[n, j] * b_ret_ext.data[j, m]
+                    for j in range(m, n + 1)
+                )
+            else:
+                a_ret_b_ret_ref.data[n, m] = sum(
+                    w[n - m, j]
+                    * a_ret_ext.data[n, n - j] * b_ret_ext.data[n - j, m]
+                    for j in range(order + 1)
+                )
+
+        assert_gfs_are_close(a_ret_b_ret, a_ret_b_ret_ref, precision=1e-12)
+
     def test_conv_matrix(self):
         order = 5
-        w = GregoryIntegrator(order).weights(self.t_mesh)
+        integrator = GregoryIntegrator(order)
+        w = integrator.weights(self.t_mesh)
 
         # Matrix-valued GF
         a_l, a_g = self._make_g_l_g_g_matrix(1.0)
@@ -138,6 +168,7 @@ class test_retime(unittest.TestCase):
         b = from_lesser_greater(b_l, b_g)
 
         a_ret_ext = retarded_ext(a)
+        b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
         a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
@@ -160,9 +191,40 @@ class test_retime(unittest.TestCase):
         assert_gfs_are_close(a_ret_b_l, a_ret_b_l_ref, precision=1e-12)
         assert_gfs_are_close(a_l_b_adv, a_l_b_adv_ref, precision=1e-12)
 
+        a_ret_b_ret = conv_ret_ret(a_ret_ext, b_ret_ext)
+
+        a_ret_b_ret_ref = Gf(mesh=a_ret_b_ret.mesh, target_shape=(3, 3))
+        for n, m, a, b, c in product(range(self.n_t),
+                                     range(self.n_t),
+                                     *[range(3)] * 3):
+            if n < m:
+                continue
+            if n <= order:
+                a_ret_b_ret_ref.data[n, m, a, b] += self.t_mesh.delta * sum(
+                    integrator.I[m, n, j]
+                    * a_ret_ext.data[n, j, a, c] * b_ret_ext.data[j, m, c, b]
+                    for j in range(order + 1)
+                )
+            elif n - m > order:
+                a_ret_b_ret_ref.data[n, m, a, b] += sum(
+                    w[n - m, j - m]
+                    * a_ret_ext.data[n, j, a, c] * b_ret_ext.data[j, m, c, b]
+                    for j in range(m, n + 1)
+                )
+            else:
+                a_ret_b_ret_ref.data[n, m, a, b] += sum(
+                    w[n - m, j]
+                    * a_ret_ext.data[n, n - j, a, c]
+                    * b_ret_ext.data[n - j, m, c, b]
+                    for j in range(order + 1)
+                )
+
+        assert_gfs_are_close(a_ret_b_ret, a_ret_b_ret_ref, precision=1e-12)
+
     def test_conv_matrix_bz(self):
         order = 5
-        w = GregoryIntegrator(order).weights(self.t_mesh)
+        integrator = GregoryIntegrator(order)
+        w = integrator.weights(self.t_mesh)
 
         # Matrix-valued GF with an extra mesh component
         n_k = 5
@@ -174,6 +236,7 @@ class test_retime(unittest.TestCase):
         b = from_lesser_greater(b_l, b_g)
 
         a_ret_ext = retarded_ext(a)
+        b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
         a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
@@ -199,9 +262,43 @@ class test_retime(unittest.TestCase):
         assert_gfs_are_close(a_ret_b_l, a_ret_b_l_ref, precision=1e-12)
         assert_gfs_are_close(a_l_b_adv, a_l_b_adv_ref, precision=1e-12)
 
+        a_ret_b_ret = conv_ret_ret(a_ret_ext, b_ret_ext)
+
+        a_ret_b_ret_ref = Gf(mesh=a_ret_b_ret.mesh, target_shape=(3, 3))
+        for n, m, K, a, b, c in product(range(self.n_t),
+                                        range(self.n_t),
+                                        range(n_k),
+                                        *[range(3)] * 3):
+            if n < m:
+                continue
+            if n <= order:
+                a_ret_b_ret_ref.data[n, m, K, a, b] += self.t_mesh.delta * sum(
+                    integrator.I[m, n, j]
+                    * a_ret_ext.data[n, j, K, a, c]
+                    * b_ret_ext.data[j, m, K, c, b]
+                    for j in range(order + 1)
+                )
+            elif n - m > order:
+                a_ret_b_ret_ref.data[n, m, K, a, b] += sum(
+                    w[n - m, j - m]
+                    * a_ret_ext.data[n, j, K, a, c]
+                    * b_ret_ext.data[j, m, K, c, b]
+                    for j in range(m, n + 1)
+                )
+            else:
+                a_ret_b_ret_ref.data[n, m, K, a, b] += sum(
+                    w[n - m, j]
+                    * a_ret_ext.data[n, n - j, K, a, c]
+                    * b_ret_ext.data[n - j, m, K, c, b]
+                    for j in range(order + 1)
+                )
+
+        assert_gfs_are_close(a_ret_b_ret, a_ret_b_ret_ref, precision=1e-12)
+
     def test_conv_matrix_bz1_bz2(self):
         order = 5
-        w = GregoryIntegrator(order).weights(self.t_mesh)
+        integrator = GregoryIntegrator(order)
+        w = integrator.weights(self.t_mesh)
 
         # Matrix-valued GF with an extra mesh component
         n_k1 = 4
@@ -215,6 +312,7 @@ class test_retime(unittest.TestCase):
         b = from_lesser_greater(b_l, b_g)
 
         a_ret_ext = retarded_ext(a)
+        b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
         a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
@@ -240,6 +338,41 @@ class test_retime(unittest.TestCase):
 
         assert_gfs_are_close(a_ret_b_l, a_ret_b_l_ref, precision=1e-12)
         assert_gfs_are_close(a_l_b_adv, a_l_b_adv_ref, precision=1e-12)
+
+        a_ret_b_ret = conv_ret_ret(a_ret_ext, b_ret_ext)
+
+        a_ret_b_ret_ref = Gf(mesh=a_ret_b_ret.mesh, target_shape=(3, 3))
+        for n, m, K1, K2, a, b, c in product(range(self.n_t),
+                                             range(self.n_t),
+                                             range(n_k1),
+                                             range(n_k2),
+                                             *[range(3)] * 3):
+            if n < m:
+                continue
+            if n <= order:
+                a_ret_b_ret_ref.data[n, m, K1, K2, a, b] += \
+                    self.t_mesh.delta * sum(
+                    integrator.I[m, n, j]
+                    * a_ret_ext.data[n, j, K1, a, c]
+                    * b_ret_ext.data[j, m, K2, c, b]
+                    for j in range(order + 1)
+                )
+            elif n - m > order:
+                a_ret_b_ret_ref.data[n, m, K1, K2, a, b] += sum(
+                    w[n - m, j - m]
+                    * a_ret_ext.data[n, j, K1, a, c]
+                    * b_ret_ext.data[j, m, K2, c, b]
+                    for j in range(m, n + 1)
+                )
+            else:
+                a_ret_b_ret_ref.data[n, m, K1, K2, a, b] += sum(
+                    w[n - m, j]
+                    * a_ret_ext.data[n, n - j, K1, a, c]
+                    * b_ret_ext.data[n - j, m, K2, c, b]
+                    for j in range(order + 1)
+                )
+
+        assert_gfs_are_close(a_ret_b_ret, a_ret_b_ret_ref, precision=1e-12)
 
 
 if __name__ == '__main__':
