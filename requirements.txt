@@ -2,6 +2,7 @@ setuptools>=42.0.0
 wheel
 packaging>=17.0
 numpy>=1.12.0
+scipy>=1.7.0
 pytest
 pytest-mpi
 flake8
