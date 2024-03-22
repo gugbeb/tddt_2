@@ -4,8 +4,6 @@ TODO list
 * Add a version of `compute_keldysh_vertex3()` that returns vertices with
   non-trivial `arg_index_shapes`.
 
-* Figure out how to use an R/W container layer in the Docker image.
-
 * Try to implement a new class `KeldyshFunction` that stores an N-point contour
   function as N! real time components (see [2] for details).
 
