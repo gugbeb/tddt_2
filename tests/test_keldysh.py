@@ -312,6 +312,7 @@ class test_keldysh(unittest.TestCase):
         n_k = 10
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(self.t_mesh1, bz_mesh)
+
         g = KeldyshGF(mesh=mesh, arg_index_shapes=((3,),))
 
         self.assertEqual(g.mesh, mesh)
@@ -475,10 +476,9 @@ class test_keldysh(unittest.TestCase):
             g_comp.data[:] = x * np.arange(s).reshape(g_comp.data.shape) + n
         return g
 
-    def test_keldysh_gf_convolution(self):
+    def test_keldysh_gf_convolution_scalar(self):
         w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
 
-        # Scalar-valued GF
         g1 = self._make_test_keldysh_gf(self.tt_mesh12, 1)
         g2 = self._make_test_keldysh_gf(self.tt_mesh23, 2)
         g1g2 = g1 @ g2
@@ -500,7 +500,9 @@ class test_keldysh(unittest.TestCase):
 
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref)
 
-        # Matrix-valued GF
+    def test_keldysh_gf_convolution_matrix(self):
+        w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
+
         g1 = self._make_test_keldysh_gf(self.tt_mesh12, 1, ((2,), (4,)))
         g2 = self._make_test_keldysh_gf(self.tt_mesh23, 2, ((4,), (1,)))
         g1g2 = g1 @ g2
@@ -533,7 +535,7 @@ class test_keldysh(unittest.TestCase):
 
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref)
 
-    def test_keldysh_gf_convolution_bz(self):
+    def test_keldysh_gf_convolution_scalar_bz(self):
         n_k = 4
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
         ttk_mesh12 = MeshProduct(*self.tt_mesh12.components, bz_mesh)
@@ -542,7 +544,6 @@ class test_keldysh(unittest.TestCase):
 
         w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
 
-        # Scalar-valued GF with an extra k-mesh component
         g1 = self._make_test_keldysh_gf(ttk_mesh12, 1)
         g2 = self._make_test_keldysh_gf(ttk_mesh23, 2)
         g1g2 = g1 @ g2
@@ -567,7 +568,15 @@ class test_keldysh(unittest.TestCase):
 
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref)
 
-        # Matrix-valued GF with an extra k-mesh component
+    def test_keldysh_gf_convolution_matrix_bz(self):
+        n_k = 4
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        ttk_mesh12 = MeshProduct(*self.tt_mesh12.components, bz_mesh)
+        ttk_mesh23 = MeshProduct(*self.tt_mesh23.components, bz_mesh)
+        ttk_mesh13 = MeshProduct(*self.tt_mesh13.components, bz_mesh)
+
+        w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
+
         g1 = self._make_test_keldysh_gf(ttk_mesh12, 1, ((2,), (3,)))
         g2 = self._make_test_keldysh_gf(ttk_mesh23, 2, ((3,), (1,)))
         g1g2 = g1 @ g2
@@ -601,7 +610,7 @@ class test_keldysh(unittest.TestCase):
 
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref)
 
-    def test_keldysh_gf_convolution_bz1_bz2(self):
+    def test_keldysh_gf_convolution_scalar_bz1_bz2(self):
         n_k1 = 4
         bz1_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k1)
         ttk1_mesh12 = MeshProduct(*self.tt_mesh12.components, bz1_mesh)
@@ -616,7 +625,6 @@ class test_keldysh(unittest.TestCase):
 
         w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
 
-        # Scalar-valued GFs with different k-mesh components
         g1 = self._make_test_keldysh_gf(ttk1_mesh12, 1)
         g2 = self._make_test_keldysh_gf(ttk2_mesh23, 2)
         g1g2 = g1 @ g2
@@ -642,7 +650,21 @@ class test_keldysh(unittest.TestCase):
 
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref)
 
-        # Matrix-valued GFs with different k-mesh components
+    def test_keldysh_gf_convolution_matrix_bz1_bz2(self):
+        n_k1 = 4
+        bz1_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k1)
+        ttk1_mesh12 = MeshProduct(*self.tt_mesh12.components, bz1_mesh)
+
+        n_k2 = 3
+        bz2_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k2)
+        ttk2_mesh23 = MeshProduct(*self.tt_mesh23.components, bz2_mesh)
+
+        ttk12_mesh13 = MeshProduct(*self.tt_mesh13.components,
+                                   bz1_mesh,
+                                   bz2_mesh)
+
+        w = GregoryIntegrator(5).weights_conv(self.t_mesh2)
+
         g1 = self._make_test_keldysh_gf(ttk1_mesh12, 1, ((2,), (3,)))
         g2 = self._make_test_keldysh_gf(ttk2_mesh23, 2, ((3,), (1,)))
         g1g2 = g1 @ g2
