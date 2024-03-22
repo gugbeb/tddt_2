@@ -12,6 +12,7 @@ from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
 from .util import subscripts
 from .integration import GregoryIntegrator
+from .retime import conv_ret_l, conv_l_adv
 
 
 class Branch(Enum):
@@ -234,10 +235,32 @@ class KeldyshGF:
 
     def __matmul__(self, other):
         r"""
-        Contour convolution over the last argument of 'self' and
+        Contour convolution over the second argument of 'self' and
         the first argument of 'other'.
         """
-        return conv(self, other, [(-1, 0)])
+
+        # General case
+        if not (self.n_args == 2 and other.n_args == 2):
+            return conv(self, other, [(-1, 0)])
+
+        # High-accuracy approach for a convolution of two 2-point GFs
+
+        self_l = lesser(self)
+        self_g = greater(self)
+        self_ret = retarded_ext(self)
+
+        other_l = lesser(other)
+        other_g = greater(other)
+        other_adv = advanced_ext(other)
+
+        conv_l = conv_ret_l(self_ret, other_l) + conv_l_adv(self_l, other_adv)
+        conv_g = conv_ret_l(self_ret, other_g) + conv_l_adv(self_g, other_adv)
+
+        return from_lesser_greater(
+            conv_l,
+            conv_g,
+            n_left_target_axes=len(self.arg_index_shapes[0])
+        )
 
 
 def target_dot(g: KeldyshGF,

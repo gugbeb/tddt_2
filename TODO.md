@@ -1,9 +1,6 @@
 TODO list
 =========
 
-* Re-implement `KeldyshGF.__matmul__()` using the component-wise treatment as
-  described in Section 11 of the NESSi paper [1].
-
 * Add a version of `compute_keldysh_vertex3()` that returns vertices with
   non-trivial `arg_index_shapes`.
 
