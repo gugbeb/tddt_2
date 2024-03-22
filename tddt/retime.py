@@ -235,6 +235,8 @@ def conv_ret_l(a_ret: Gf,
     # Handle the time components of the meshes
     assert a_ret.mesh.components[1] == b_l.mesh.components[0], \
            "Incompatible time meshes of a_ret and b_l"
+    assert len(a_ret.mesh.components[0]) >= len(a_ret.mesh.components[1]), \
+           "First component of a_ret's mesh cannot be shorter than the second"
 
     ts = subscripts['time']
     subs_a_ret_t = ts[0] + ts[2]
@@ -281,7 +283,10 @@ def conv_ret_l(a_ret: Gf,
 
     # Eqs. (117)-(118) of the NESSi paper.
     w = GregoryIntegrator(gregory_order).weights(a_ret.mesh.components[1])
-    res.data[:] = np.einsum(subs, a_ret.data, w, b_l.data, optimize="optimal")
+    res.data[:] = np.einsum(subs,
+                            a_ret.data,
+                            w[:len(t_mesh_comps_res[0]), :],
+                            b_l.data, optimize="optimal")
 
     return res
 
@@ -310,6 +315,8 @@ def conv_l_adv(a_l: Gf,
     # Handle the time components of the meshes
     assert a_l.mesh.components[1] == b_adv.mesh.components[0], \
            "Incompatible time meshes of a_l and b_adv"
+    assert len(b_adv.mesh.components[1]) >= len(b_adv.mesh.components[0]), \
+           "Second component of b_adv's mesh cannot be shorter than the first"
 
     ts = subscripts['time']
     subs_a_l_t = ts[0] + ts[2]
@@ -356,6 +363,10 @@ def conv_l_adv(a_l: Gf,
 
     # Eqs. (119)-(120) of the NESSi paper.
     w = GregoryIntegrator(gregory_order).weights(a_l.mesh.components[1])
-    res.data[:] = np.einsum(subs, a_l.data, w, b_adv.data, optimize="optimal")
+    res.data[:] = np.einsum(subs,
+                            a_l.data,
+                            w[:len(t_mesh_comps_res[1]), :],
+                            b_adv.data,
+                            optimize="optimal")
 
     return res
