@@ -12,7 +12,7 @@ from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
 from .util import subscripts
 from .integration import GregoryIntegrator
-from .retime import conv_ret_l, conv_l_adv
+from .retime import conv_ret_lg, conv_lg_adv
 
 
 class Branch(Enum):
@@ -253,8 +253,8 @@ class KeldyshGF:
         other_g = greater(other)
         other_adv = advanced_ext(other)
 
-        conv_l = conv_ret_l(self_ret, other_l) + conv_l_adv(self_l, other_adv)
-        conv_g = conv_ret_l(self_ret, other_g) + conv_l_adv(self_g, other_adv)
+        conv_l = conv_ret_lg(self_ret, other_l) + conv_lg_adv(self_l, other_adv)
+        conv_g = conv_ret_lg(self_ret, other_g) + conv_lg_adv(self_g, other_adv)
 
         return from_lesser_greater(
             conv_l,

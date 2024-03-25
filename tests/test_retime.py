@@ -6,7 +6,7 @@ from triqs.gf import MeshReTime, MeshBrillouinZone, MeshProduct, Gf
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
-from tddt.retime import conj, conv_ret_ret, conv_ret_l, conv_l_adv
+from tddt.retime import conj, conv_ret_ret, conv_ret_lg, conv_lg_adv
 from tddt.keldysh import (from_lesser_greater,
                           retarded,
                           retarded_ext,
@@ -111,8 +111,8 @@ class test_retime(unittest.TestCase):
         b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
-        a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
-        a_l_b_adv = conv_l_adv(a_l, b_adv_ext)
+        a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
+        a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
 
         a_ret_b_l_ref = Gf(mesh=a_ret_b_l.mesh, target_shape=())
         a_l_b_adv_ref = Gf(mesh=a_l_b_adv.mesh, target_shape=())
@@ -171,8 +171,8 @@ class test_retime(unittest.TestCase):
         b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
-        a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
-        a_l_b_adv = conv_l_adv(a_l, b_adv_ext)
+        a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
+        a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
 
         a_ret_b_l_ref = Gf(mesh=a_ret_b_l.mesh, target_shape=(3, 3))
         a_l_b_adv_ref = Gf(mesh=a_l_b_adv.mesh, target_shape=(3, 3))
@@ -239,8 +239,8 @@ class test_retime(unittest.TestCase):
         b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
-        a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
-        a_l_b_adv = conv_l_adv(a_l, b_adv_ext)
+        a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
+        a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
 
         a_ret_b_l_ref = Gf(mesh=a_ret_b_l.mesh, target_shape=(3, 3))
         a_l_b_adv_ref = Gf(mesh=a_l_b_adv.mesh, target_shape=(3, 3))
@@ -315,8 +315,8 @@ class test_retime(unittest.TestCase):
         b_ret_ext = retarded_ext(b)
         b_adv_ext = advanced_ext(b)
 
-        a_ret_b_l = conv_ret_l(a_ret_ext, b_l)
-        a_l_b_adv = conv_l_adv(a_l, b_adv_ext)
+        a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
+        a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
 
         a_ret_b_l_ref = Gf(mesh=a_ret_b_l.mesh, target_shape=(3, 3))
         a_l_b_adv_ref = Gf(mesh=a_l_b_adv.mesh, target_shape=(3, 3))
