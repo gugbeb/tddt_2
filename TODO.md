@@ -1,11 +1,7 @@
 TODO list
 =========
 
-* Add a version of `compute_keldysh_vertex3()` that returns vertices with
-  non-trivial `arg_index_shapes`.
-
 * Try to implement a new class `KeldyshFunction` that stores an N-point contour
-  function as N! real time components (see [2] for details).
+  function as N! real time components (see [1] for details).
 
-[1]: https://www.sciencedirect.com/science/article/abs/pii/S0010465520302277
-[2]: https://iopscience.iop.org/article/10.1088/1751-8121/ab165d
+[1]: https://iopscience.iop.org/article/10.1088/1751-8121/ab165d

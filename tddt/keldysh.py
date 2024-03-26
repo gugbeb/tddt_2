@@ -4,8 +4,8 @@
 
 from enum import Enum
 from copy import deepcopy
-from itertools import product, takewhile, islice
-from typing import Tuple, Dict, Union, Sequence, Optional
+from itertools import product, takewhile, islice, chain
+from typing import Tuple, Dict, Union, Sequence, Optional, Callable
 import numpy as np
 
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
@@ -132,6 +132,39 @@ class KeldyshGF:
             [Gf(mesh=self.mesh, target_shape=self.target_shape)
              for _ in range(2 ** self.n_args)]
         ).reshape((2,) * self.n_args)
+
+    @classmethod
+    def from_arg_index_gen(cls,
+                           generator: Callable, *,
+                           mesh: Union[MeshReTime, MeshProduct],
+                           arg_index_shapes: Tuple[Tuple[int, ...], ...]
+                           ):
+        """
+        Construct a matrix/tensor-valued KeldyshGF object out of scalar-valued
+        components returned by a given generator function.
+
+        The generator function used to construct an N-point GF must accept N
+        arguments, each of which is a tuple of integer indices from the ranges
+        determined by the respective parts of `arg_index_shapes`. The generator
+        is expected to return a scalar-valued KeldyshGF object.
+        """
+        g = KeldyshGF(mesh=mesh, arg_index_shapes=arg_index_shapes)
+
+        for indices in product(*map(np.ndindex, arg_index_shapes)):
+            g_el = generator(*indices)
+            assert isinstance(g_el, KeldyshGF), \
+                "Generator must return an instance of KeldyshGF"
+            assert g.n_args == g_el.n_args, \
+                f"Expected a {g.n_args}-point GF from the generator " \
+                f"(got a {g_el.n_args}-point GF)"
+            assert g.mesh == g_el.mesh, \
+                "GF returned by the generator has a wrong mesh"
+
+            for g_comp, g_el_comp in zip(g.components.flat,
+                                         g_el.components.flat):
+                g_comp.data[..., *chain.from_iterable(indices)] = g_el_comp.data
+
+        return g
 
     def __getitem__(self, args):
         args_t = args if isinstance(args, tuple) else (args,)

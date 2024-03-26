@@ -352,6 +352,30 @@ class test_keldysh(unittest.TestCase):
 
             self._test_gf(g)
 
+    def test_from_arg_index_gen(self):
+        ttt_mesh = MeshProduct(MeshReTime(0, 6.0, 7),
+                               MeshReTime(0, 6.0, 8),
+                               MeshReTime(0, 6.0, 9))
+        arg_index_shapes = ((2, 3), (3, 2), (4,))
+
+        def generator(ind1, ind2, ind3):
+            g_el = KeldyshGF(mesh=ttt_mesh)
+            for br in product(Branch, repeat=3):
+                val = (ind1[0] + ind1[1]) * (ind2[0] - ind2[1]) * (ind3[0] + 3)
+                g_el[*br].data[:] = val
+            return g_el
+
+        g = KeldyshGF.from_arg_index_gen(generator,
+                                         mesh=ttt_mesh,
+                                         arg_index_shapes=arg_index_shapes)
+
+        index_ranges = product(*map(range, (2, 3, 3, 2, 4)))
+        for ind in index_ranges:
+            val = (ind[0] + ind[1]) * (ind[2] - ind[3]) * (ind[4] + 3)
+            for br in product(Branch, repeat=3):
+                assert_array_equal(g[*br].data[..., *ind],
+                                   val * np.ones((7, 8, 9)))
+
     def test_keldysh_gf_bz(self):
         tt_mesh = MeshProduct(MeshReTime(0, 6.0, 7), MeshReTime(0, 6.0, 8))
         n_k = 10
