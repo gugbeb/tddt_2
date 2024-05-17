@@ -15,8 +15,6 @@ from tddt.keldysh import (Branch,
                           contour_ordering,
                           KeldyshGF,
                           target_dot,
-                          from_lesser_greater,
-                          from_vertex3_pieces,
                           herm_conj)
 from tddt.testing import assert_keldysh_gf_almost_equal
 
@@ -336,7 +334,7 @@ class test_keldysh(unittest.TestCase):
 
             g_l.data[:] = 2.0
             g_g.data[:] = 3.0
-            g = from_lesser_greater(g_l, g_g)
+            g = KeldyshGF.from_lesser_greater(g_l, g_g)
             self.assertEqual(g.components.shape, (2, 2))
 
             for i, j in product(range(2), repeat=2):
@@ -386,7 +384,7 @@ class test_keldysh(unittest.TestCase):
 
             g_l.data[:] = 2.0
             g_g.data[:] = 3.0
-            g = from_lesser_greater(g_l, g_g)
+            g = KeldyshGF.from_lesser_greater(g_l, g_g)
             self.assertEqual(g.components.shape, (2, 2))
 
             for i, j in product(range(2), repeat=2):
@@ -434,7 +432,7 @@ class test_keldysh(unittest.TestCase):
             g_g[t1, t2] = -1j * (1.0 - 0.1) * e
             g_l[t1, t2] = -1j * -0.1 * e
 
-        g = from_lesser_greater(g_l, g_g)
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
         self.assertTrue(g.is_hermitian())
         g_hc = herm_conj(g)
         assert_keldysh_gf_almost_equal(g_hc, g)
@@ -452,7 +450,7 @@ class test_keldysh(unittest.TestCase):
             e = expm(-1j * h_mat * (t1.value - t2.value))
             g_g[t1, t2] = -1j * (1.0 - 0.1) * e
             g_l[t1, t2] = -1j * -0.1 * e
-        g = from_lesser_greater(g_l, g_g)
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
         self.assertTrue(g.is_hermitian())
         g_hc = herm_conj(g)
         assert_keldysh_gf_almost_equal(g_hc, g)
@@ -474,7 +472,7 @@ class test_keldysh(unittest.TestCase):
                 e = expm(-1j * h_mat * (t1.value - t2.value))
                 g_g[t1, t2, k] = -1j * (1.0 - 0.1) * e
                 g_l[t1, t2, k] = -1j * -0.1 * e
-        g = from_lesser_greater(g_l, g_g)
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
         self.assertTrue(g.is_hermitian())
         g_hc = herm_conj(g)
         assert_keldysh_gf_almost_equal(g_hc, g)
@@ -517,8 +515,8 @@ class test_keldysh(unittest.TestCase):
                 g_g[i][t1, t2], g_l[i][t1, t2] = self._single_state_g_l(occ[i],
                                                                         eps[i],
                                                                         dt)
-        g1 = from_lesser_greater(g_l[0], g_g[0])
-        g2 = from_lesser_greater(g_l[1], g_g[1])
+        g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
+        g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
         g1g2 = g1 @ g2
 
@@ -532,7 +530,7 @@ class test_keldysh(unittest.TestCase):
             g1g2_ref_g[t1, t2], g1g2_ref_l[t1, t2] = \
                 self._conv_g_l(*occ, *eps, t1, t2)
 
-        g1g2_ref = from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
+        g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
     def test_keldysh_gf_convolution_matrix(self):
@@ -554,8 +552,8 @@ class test_keldysh(unittest.TestCase):
                     g_val, l_val = self._single_state_g_l(occ[i], eps[i], dt)
                     g_l[i][t1, t2][m, n] = (m + 1) * (n + 1) * l_val
                     g_g[i][t1, t2][m, n] = (m + 1) * (n + 1) * g_val
-        g1 = from_lesser_greater(g_l[0], g_g[0])
-        g2 = from_lesser_greater(g_l[1], g_g[1])
+        g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
+        g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
         g1g2 = g1 @ g2
 
@@ -572,7 +570,7 @@ class test_keldysh(unittest.TestCase):
                 g1g2_ref_g[t1, t2][m, n] = (m + 1) * x * (n + 1) * g_val
                 g1g2_ref_l[t1, t2][m, n] = (m + 1) * x * (n + 1) * l_val
 
-        g1g2_ref = from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
+        g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
     def test_keldysh_gf_convolution_scalar_bz(self):
@@ -601,8 +599,8 @@ class test_keldysh(unittest.TestCase):
                         eps,
                         dt
                     )
-        g1 = from_lesser_greater(g_l[0], g_g[0])
-        g2 = from_lesser_greater(g_l[1], g_g[1])
+        g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
+        g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
         g1g2 = g1 @ g2
 
@@ -617,7 +615,7 @@ class test_keldysh(unittest.TestCase):
                 g1g2_ref_g[t1, t2, k], g1g2_ref_l[t1, t2, k] = \
                     self._conv_g_l(*occ, *eps, t1, t2)
 
-        g1g2_ref = from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
+        g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
     def test_keldysh_gf_convolution_matrix_bz(self):
@@ -646,8 +644,8 @@ class test_keldysh(unittest.TestCase):
                         g_l[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * l_val
                         g_g[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * g_val
 
-        g1 = from_lesser_greater(g_l[0], g_g[0])
-        g2 = from_lesser_greater(g_l[1], g_g[1])
+        g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
+        g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
         g1g2 = g1 @ g2
 
@@ -663,7 +661,7 @@ class test_keldysh(unittest.TestCase):
                     g1g2_ref_g[t1, t2, k][m, n] = (m + 1) * x * (n + 1) * g_val
                     g1g2_ref_l[t1, t2, k][m, n] = (m + 1) * x * (n + 1) * l_val
 
-        g1g2_ref = from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
+        g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
     def test_keldysh_gf_convolution_scalar_bz1_bz2(self):
@@ -696,8 +694,8 @@ class test_keldysh(unittest.TestCase):
                         eps,
                         dt
                     )
-        g1 = from_lesser_greater(g_l[0], g_g[0])
-        g2 = from_lesser_greater(g_l[1], g_g[1])
+        g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
+        g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
         g1g2 = g1 @ g2
 
@@ -712,7 +710,7 @@ class test_keldysh(unittest.TestCase):
                 g1g2_ref_g[t1, t2, k1, k2], g1g2_ref_l[t1, t2, k1, k2] = \
                     self._conv_g_l(*occ, eps1, eps2, t1, t2)
 
-        g1g2_ref = from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
+        g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
     def test_keldysh_gf_convolution_matrix_bz1_bz2(self):
@@ -745,8 +743,8 @@ class test_keldysh(unittest.TestCase):
                         g_l[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * l_val
                         g_g[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * g_val
 
-        g1 = from_lesser_greater(g_l[0], g_g[0])
-        g2 = from_lesser_greater(g_l[1], g_g[1])
+        g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
+        g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
         g1g2 = g1 @ g2
 
@@ -766,7 +764,7 @@ class test_keldysh(unittest.TestCase):
                     g1g2_ref_l[t1, t2, k1, k2][m, n] = \
                         (m + 1) * x * (n + 1) * l_val
 
-        g1g2_ref = from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
+        g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
     def test_keldysh_vertex3(self):
@@ -786,7 +784,7 @@ class test_keldysh(unittest.TestCase):
              (2, 0, 1): make_time_piece(5.0),
              (2, 1, 0): make_time_piece(6.0)}
 
-        Lambda = from_vertex3_pieces(G)
+        Lambda = KeldyshGF.from_vertex3_pieces(G)
         for a0, a1, a2 in product(Branch, repeat=3):
             for t0, t1, t2 in ttt_mesh:
                 self.assertNotEqual(Lambda[CP(a0, t0), CP(a1, t1), CP(a2, t2)],

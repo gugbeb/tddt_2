@@ -2,6 +2,8 @@
 # Keldysh Green's functions and vertices
 #
 
+from __future__ import annotations
+
 from enum import Enum
 from copy import deepcopy
 from itertools import product, takewhile, islice, chain
@@ -132,6 +134,111 @@ class KeldyshGF:
             [Gf(mesh=self.mesh, target_shape=self.target_shape)
              for _ in range(2 ** self.n_args)]
         ).reshape((2,) * self.n_args)
+
+    #
+    # Convenience constructors
+    #
+
+    @classmethod
+    def from_lesser_greater(cls,
+                            g_l: Gf,
+                            g_g: Gf,
+                            n_left_target_axes=None) -> KeldyshGF:
+        r"""
+        Construct a 2-point KeldyshGF object from a pair of lesser and greater
+        real time Green's functions.
+        """
+        assert g_l.mesh == g_g.mesh
+        assert g_l.target_shape == g_g.target_shape
+        assert len(g_l.mesh.components) >= 2
+        assert isinstance(g_l.mesh.components[0], MeshReTime) and \
+               isinstance(g_l.mesh.components[1], MeshReTime)
+
+        if n_left_target_axes is None:
+            assert len(g_l.target_shape) % 2 == 0
+            n_left_target_axes = len(g_l.target_shape) // 2
+
+        arg_index_shapes = (g_l.target_shape[:n_left_target_axes],
+                            g_l.target_shape[n_left_target_axes:])
+
+        g = KeldyshGF(mesh=g_l.mesh, arg_index_shapes=arg_index_shapes)
+
+        #
+        # Fill Keldysh components
+        #
+
+        def ordered(z0, z1):
+            return contour_ordering(z0, z1) == (0, 1)
+
+        non_t_slice = (slice(None),) * len(g.non_time_mesh.components)
+
+        # Aoki RMP, Eqs. (17)
+        g[Branch.BACKWARD, Branch.FORWARD] = g_g
+        g[Branch.FORWARD, Branch.BACKWARD] = g_l
+        # Aoki RMP, Eqs. (15)
+        for t0, t1 in g.time_mesh:
+            sl = (t0, t1) + non_t_slice
+            z0 = ContourPoint(Branch.FORWARD, t0)
+            z1 = ContourPoint(Branch.FORWARD, t1)
+            g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
+            z0 = ContourPoint(Branch.BACKWARD, t0)
+            z1 = ContourPoint(Branch.BACKWARD, t1)
+            g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
+
+        return g
+
+    #
+    # Functions specific to the 3-point GFs
+    #
+
+    @classmethod
+    def from_vertex3_pieces(cls,
+                            G: Dict[Tuple[int, int, int], Gf]) -> KeldyshGF:
+        r"""
+        Construct a 3-point vertex from 6 real-time correlators.
+
+        Each element of dictionary G corresponds to one permutation of operators
+        in the correlator,
+        $$
+            G_{ijk}(t_0, t_1, t_2) = -\xi_{ijk} <O_i(t_i) O_j(t_j) O_k(t_k)>,
+        $$
+        where $O_0(t_0) = c(t_0)$, $O_1(t_1) = c^\dagger(t_1)$,
+        $O_2(t_2) = \rho(t_2)$. $\xi_{ijk} = -1$ if permutation (ijk) swaps
+        indices 0 and 1, and +1 otherwise.
+
+        Keys are 3! = 6 triplets (i, j, k), which are permutations of (0, 1, 2)
+        indicating the respective order of $c$, $c^\dagger$ and $\rho$.
+        """
+        assert len(G) == 6
+
+        G0 = next(iter(G.values()))
+        assert all(p.mesh == G0.mesh for p in G.values())
+        assert all(p.target_shape == G0.target_shape for p in G.values())
+
+        ts_len = len(G0.target_shape)
+        assert ts_len % 3 == 0, \
+            "Target shape of the pieces must contain a multiple of 3 elements"
+        arg_index_shapes = (
+            G0.target_shape[:ts_len // 3],
+            G0.target_shape[ts_len // 3: 2 * ts_len // 3],
+            G0.target_shape[2 * ts_len // 3:]
+        )
+
+        Lambda = KeldyshGF(mesh=G0.mesh, arg_index_shapes=arg_index_shapes)
+
+        #
+        # Fill Keldysh components
+        #
+
+        for a0, a1, a2 in product(Branch, repeat=3):
+            for t0, t1, t2 in Lambda.mesh:
+                z0 = ContourPoint(a0, t0)
+                z1 = ContourPoint(a1, t1)
+                z2 = ContourPoint(a2, t2)
+                order = contour_ordering(z0, z1, z2)
+                Lambda[z0, z1, z2] = G[order][t0, t1, t2]
+
+        return Lambda
 
     @classmethod
     def from_arg_index_gen(cls,
@@ -291,7 +398,7 @@ class KeldyshGF:
         conv_l = conv_ret_lg(self_ret, other_l) + conv_lg_adv(self_l, other_adv)
         conv_g = conv_ret_lg(self_ret, other_g) + conv_lg_adv(self_g, other_adv)
 
-        return from_lesser_greater(
+        return self.from_lesser_greater(
             conv_l,
             conv_g,
             n_left_target_axes=len(self.arg_index_shapes[0])
@@ -473,104 +580,9 @@ def herm_conj(g: KeldyshGF) -> KeldyshGF:
     g_conj_g.data[:] = -np.conj(np.moveaxis(g_g.data, axes_from, axes_to))
     g_conj_l.data[:] = -np.conj(np.moveaxis(g_l.data, axes_from, axes_to))
 
-    return from_lesser_greater(g_conj_l, g_conj_g, n_left_target_axes=nri)
-
-
-def from_lesser_greater(g_l: Gf, g_g: Gf, n_left_target_axes=None) -> KeldyshGF:
-    r"""
-    Construct a 2-point KeldyshGF object from a pair of lesser and greater
-    real time Green's functions.
-    """
-    assert g_l.mesh == g_g.mesh
-    assert g_l.target_shape == g_g.target_shape
-    assert len(g_l.mesh.components) >= 2
-    assert isinstance(g_l.mesh.components[0], MeshReTime) and \
-           isinstance(g_l.mesh.components[1], MeshReTime)
-
-    if n_left_target_axes is None:
-        assert len(g_l.target_shape) % 2 == 0
-        n_left_target_axes = len(g_l.target_shape) // 2
-
-    arg_index_shapes = (g_l.target_shape[:n_left_target_axes],
-                        g_l.target_shape[n_left_target_axes:])
-
-    g = KeldyshGF(mesh=g_l.mesh, arg_index_shapes=arg_index_shapes)
-
-    #
-    # Fill Keldysh components
-    #
-
-    def ordered(z0, z1):
-        return contour_ordering(z0, z1) == (0, 1)
-
-    non_t_slice = (slice(None),) * len(g.non_time_mesh.components)
-
-    # Aoki RMP, Eqs. (17)
-    g[Branch.BACKWARD, Branch.FORWARD] = g_g
-    g[Branch.FORWARD, Branch.BACKWARD] = g_l
-    # Aoki RMP, Eqs. (15)
-    for t0, t1 in g.time_mesh:
-        sl = (t0, t1) + non_t_slice
-        z0 = ContourPoint(Branch.FORWARD, t0)
-        z1 = ContourPoint(Branch.FORWARD, t1)
-        g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
-        z0 = ContourPoint(Branch.BACKWARD, t0)
-        z1 = ContourPoint(Branch.BACKWARD, t1)
-        g[z0, z1] = g_g[sl] if ordered(z0, z1) else g_l[sl]
-
-    return g
-
-#
-# Functions specific to the 3-point GFs
-#
-
-
-def from_vertex3_pieces(G: Dict[Tuple[int, int, int], Gf]) -> KeldyshGF:
-    r"""
-    Construct a 3-point vertex from 6 real-time correlators.
-
-    Each element of dictionary G corresponds to one permutation of operators
-    in the correlator,
-    $$
-        G_{ijk}(t_0, t_1, t_2) = -\xi_{ijk} <O_i(t_i) O_j(t_j) O_k(t_k)>,
-    $$
-    where $O_0(t_0) = c(t_0)$, $O_1(t_1) = c^\dagger(t_1)$,
-    $O_2(t_2) = \rho(t_2)$. $\xi_{ijk} = -1$ if permutation (ijk) swaps
-    indices 0 and 1, and +1 otherwise.
-
-    Keys are 3! = 6 triplets (i, j, k), which are permutations of (0, 1, 2)
-    indicating the respective order of $c$, $c^\dagger$ and $\rho$.
-    """
-    assert len(G) == 6
-
-    G0 = next(iter(G.values()))
-    assert all(p.mesh == G0.mesh for p in G.values())
-    assert all(p.target_shape == G0.target_shape for p in G.values())
-
-    ts_len = len(G0.target_shape)
-    assert ts_len % 3 == 0, \
-        "Target shape of the pieces must contain a multiple of 3 elements"
-    arg_index_shapes = (
-        G0.target_shape[:ts_len // 3],
-        G0.target_shape[ts_len // 3: 2 * ts_len // 3],
-        G0.target_shape[2 * ts_len // 3:]
-    )
-
-    Lambda = KeldyshGF(mesh=G0.mesh, arg_index_shapes=arg_index_shapes)
-
-    #
-    # Fill Keldysh components
-    #
-
-    for a0, a1, a2 in product(Branch, repeat=3):
-        for t0, t1, t2 in Lambda.mesh:
-            z0 = ContourPoint(a0, t0)
-            z1 = ContourPoint(a1, t1)
-            z2 = ContourPoint(a2, t2)
-            order = contour_ordering(z0, z1, z2)
-            Lambda[z0, z1, z2] = G[order][t0, t1, t2]
-
-    return Lambda
+    return KeldyshGF.from_lesser_greater(g_conj_l,
+                                         g_conj_g,
+                                         n_left_target_axes=nri)
 
 
 def conv(a: KeldyshGF,  # noqa: C901

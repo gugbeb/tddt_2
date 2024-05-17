@@ -18,7 +18,7 @@ from realevol.realevol import (
 )
 
 
-from .keldysh import from_lesser_greater, from_vertex3_pieces
+from .keldysh import KeldyshGF
 
 
 def _select_op_module(op):
@@ -36,7 +36,7 @@ def compute_keldysh_gf(gf_struct, init_state, h, t_mesh, params):
     g_g = compute_g_g(gf_struct, init_state, h, t_mesh, params)
     gf = {}
     for bl, ind in gf_struct:
-        gf[bl] = from_lesser_greater(g_l[bl], g_g[bl])
+        gf[bl] = KeldyshGF.from_lesser_greater(g_l[bl], g_g[bl])
     return gf
 
 
@@ -61,7 +61,7 @@ def compute_keldysh_gf_element(c_indices,
     # Multiply by \pm i and swap time arguments of g_l
     g_g.data[:] *= -1j
     g_l.data[:] = 1j * np.transpose(g_l.data)
-    return from_lesser_greater(g_l, g_g)
+    return KeldyshGF.from_lesser_greater(g_l, g_g)
 
 
 def compute_keldysh_correlator_2t(A, B, init_state, h, t_mesh, params):
@@ -82,7 +82,7 @@ def compute_keldysh_correlator_2t(A, B, init_state, h, t_mesh, params):
                                              t_mesh,
                                              params)
     BA_corr.data[:] = (-1 if minus else 1) * np.transpose(BA_corr.data)
-    return from_lesser_greater(BA_corr, AB_corr)
+    return KeldyshGF.from_lesser_greater(BA_corr, AB_corr)
 
 
 def compute_keldysh_conn_correlator_2t(A, B, init_state, h, t_mesh, params):
@@ -117,7 +117,7 @@ def compute_keldysh_conn_correlator_2t(A, B, init_state, h, t_mesh, params):
         BA_corr[t2, t1] -= A_aver[t1] * B_aver[t2]
 
     BA_corr.data[:] = (-1 if minus else 1) * np.transpose(BA_corr.data)
-    return from_lesser_greater(BA_corr, AB_corr)
+    return KeldyshGF.from_lesser_greater(BA_corr, AB_corr)
 
 
 def compute_keldysh_vertex3(c_indices,
@@ -183,4 +183,4 @@ def compute_keldysh_vertex3(c_indices,
                                    c_c_dag_aver[t1, t2])
             G_out *= -1 * (-1 if c_c_dag_swapped else 1)
 
-    return from_vertex3_pieces(G)
+    return KeldyshGF.from_vertex3_pieces(G)

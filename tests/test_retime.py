@@ -7,7 +7,7 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
 from tddt.retime import conj, conv_ret_ret, conv_ret_lg, conv_lg_adv
-from tddt.keldysh import from_lesser_greater
+from tddt.keldysh import KeldyshGF
 from tddt.integration import GregoryIntegrator
 
 
@@ -69,7 +69,7 @@ class test_retime(unittest.TestCase):
     def test_conj(self):
         # Scalar-valued GF
         g_l, g_g = self._make_g_l_g_g_scalar()
-        g = from_lesser_greater(g_l, g_g)
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
 
         g_adv = conj(g.retarded())
         g_adv_ref = g.advanced()
@@ -77,7 +77,7 @@ class test_retime(unittest.TestCase):
 
         # Matrix-valued GF
         g_l, g_g = self._make_g_l_g_g_matrix()
-        g = from_lesser_greater(g_l, g_g)
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
 
         g_adv = conj(g.retarded())
         g_adv_ref = g.advanced()
@@ -86,7 +86,7 @@ class test_retime(unittest.TestCase):
         # Matrix-valued GF with an extra mesh component
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), 5)
         g_l, g_g = self._make_g_l_g_g_matrix_bz(bz_mesh)
-        g = from_lesser_greater(g_l, g_g)
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
 
         g_adv = conj(g.retarded())
         g_adv_ref = g.advanced()
@@ -100,8 +100,8 @@ class test_retime(unittest.TestCase):
         # Scalar-valued GF
         a_l, a_g = self._make_g_l_g_g_scalar(1.0)
         b_l, b_g = self._make_g_l_g_g_scalar(2.0)
-        a = from_lesser_greater(a_l, a_g)
-        b = from_lesser_greater(b_l, b_g)
+        a = KeldyshGF.from_lesser_greater(a_l, a_g)
+        b = KeldyshGF.from_lesser_greater(b_l, b_g)
 
         a_ret_ext = a.retarded_ext()
         b_ret_ext = b.retarded_ext()
@@ -160,8 +160,8 @@ class test_retime(unittest.TestCase):
         # Matrix-valued GF
         a_l, a_g = self._make_g_l_g_g_matrix(1.0)
         b_l, b_g = self._make_g_l_g_g_matrix(2.0)
-        a = from_lesser_greater(a_l, a_g)
-        b = from_lesser_greater(b_l, b_g)
+        a = KeldyshGF.from_lesser_greater(a_l, a_g)
+        b = KeldyshGF.from_lesser_greater(b_l, b_g)
 
         a_ret_ext = a.retarded_ext()
         b_ret_ext = b.retarded_ext()
@@ -228,8 +228,8 @@ class test_retime(unittest.TestCase):
 
         a_l, a_g = self._make_g_l_g_g_matrix_bz(bz_mesh, 1.0)
         b_l, b_g = self._make_g_l_g_g_matrix_bz(bz_mesh, 2.0)
-        a = from_lesser_greater(a_l, a_g)
-        b = from_lesser_greater(b_l, b_g)
+        a = KeldyshGF.from_lesser_greater(a_l, a_g)
+        b = KeldyshGF.from_lesser_greater(b_l, b_g)
 
         a_ret_ext = a.retarded_ext()
         b_ret_ext = b.retarded_ext()
@@ -304,8 +304,8 @@ class test_retime(unittest.TestCase):
 
         a_l, a_g = self._make_g_l_g_g_matrix_bz(bz1_mesh, 1.0)
         b_l, b_g = self._make_g_l_g_g_matrix_bz(bz2_mesh, 2.0)
-        a = from_lesser_greater(a_l, a_g)
-        b = from_lesser_greater(b_l, b_g)
+        a = KeldyshGF.from_lesser_greater(a_l, a_g)
+        b = KeldyshGF.from_lesser_greater(b_l, b_g)
 
         a_ret_ext = a.retarded_ext()
         b_ret_ext = b.retarded_ext()

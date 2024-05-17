@@ -8,7 +8,7 @@ from triqs.gf import Gf, MeshReTime, MeshBrillouinZone, MeshProduct
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
-from tddt.keldysh import from_lesser_greater
+from tddt.keldysh import KeldyshGF
 from tddt.vie2 import VIE2Solver, solve_vie2
 from tddt.testing import assert_keldysh_gf_almost_equal
 
@@ -211,8 +211,8 @@ class test_vie2(unittest.TestCase):
                                  - 0.1 * exp(-1j * (t1 - 2 * t2)))
             Q_g[t1, t2] = -1j * (1.0 - 0.1) * exp(-1j * (t1 - t2))
             Q_l[t1, t2] = -1j * (-0.1) * exp(-1j * (t1 - t2))
-        F = from_lesser_greater(F_l, F_g)
-        Q = from_lesser_greater(Q_l, Q_g)
+        F = KeldyshGF.from_lesser_greater(F_l, F_g)
+        Q = KeldyshGF.from_lesser_greater(Q_l, Q_g)
 
         G = solve_vie2(F, Q)
 
@@ -232,7 +232,7 @@ class test_vie2(unittest.TestCase):
                 + 2 * exp(-1j * (l2 * t1 - l1 * t2))
                 + (43 - 9 * sqrt(5)) * exp(-1j * l1 * (t1 - t2))
                 + (43 + 9 * sqrt(5)) * exp(-1j * l2 * (t1 - t2)))
-        G_ref = from_lesser_greater(G_ref_l, G_ref_g)
+        G_ref = KeldyshGF.from_lesser_greater(G_ref_l, G_ref_g)
 
         assert_keldysh_gf_almost_equal(G, G_ref, precision=1e-9)
 
@@ -269,8 +269,8 @@ class test_vie2(unittest.TestCase):
                 F_g[t1, t2, k] = -1j * (1 - 0.2) * e_F
                 F_l[t1, t2, k] = -1j * (-0.2) * e_F
 
-        F = from_lesser_greater(F_l, F_g)
-        Q = from_lesser_greater(Q_l, Q_g)
+        F = KeldyshGF.from_lesser_greater(F_l, F_g)
+        Q = KeldyshGF.from_lesser_greater(Q_l, Q_g)
 
         G = solve_vie2(F, Q)
 

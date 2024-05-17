@@ -8,7 +8,7 @@ import numpy as np
 from triqs.gf import Gf, MeshReTime
 
 from .retime import conj, conv_lg_adv
-from .keldysh import KeldyshGF, from_lesser_greater
+from .keldysh import KeldyshGF
 from .integration import GregoryIntegrator
 
 
@@ -320,4 +320,4 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
             G_l.data[rhs_s] = solver(F_ret_ext.data[f_s], rhs_l.data[rhs_s])
 
     # Rebuild G from G_ret_ext and G_l
-    return from_lesser_greater(G_l, G_l + G_ret_ext)
+    return KeldyshGF.from_lesser_greater(G_l, G_l + G_ret_ext)

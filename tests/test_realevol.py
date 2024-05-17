@@ -12,7 +12,7 @@ from realevol.operators_tinterp import c, c_dag, n
 from realevol.init_state import make_equilibrium_init_state
 from realevol.realevol import compute_expectval
 
-from tddt.keldysh import Branch, KeldyshGF, from_lesser_greater
+from tddt.keldysh import Branch, KeldyshGF
 from tddt.realevol import (
     compute_keldysh_gf,
     compute_keldysh_gf_element,
@@ -157,8 +157,8 @@ class test_realevol(unittest.TestCase):
             N1_aver_N0_aver[t2, t1] = N0_aver[t1] * N1_aver[t2]
         N1_aver_N0_aver.data[:] = np.transpose(N1_aver_N0_aver.data)
 
-        rho0rho1_ref = N0N1 - from_lesser_greater(N0_aver_N1_aver,
-                                                  N1_aver_N0_aver)
+        rho0rho1_ref = N0N1 - KeldyshGF.from_lesser_greater(N0_aver_N1_aver,
+                                                            N1_aver_N0_aver)
 
         assert_keldysh_gf_almost_equal(rho0rho1, rho0rho1_ref)
 
