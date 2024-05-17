@@ -17,14 +17,7 @@ from tddt.keldysh import (Branch,
                           target_dot,
                           from_lesser_greater,
                           from_vertex3_pieces,
-                          greater,
-                          lesser,
-                          retarded,
-                          advanced,
-                          retarded_ext,
-                          advanced_ext,
-                          herm_conj,
-                          is_hermitian)
+                          herm_conj)
 from tddt.testing import assert_keldysh_gf_almost_equal
 
 
@@ -199,27 +192,27 @@ class test_keldysh(unittest.TestCase):
         assert_array_almost_equal((g11 + g22).data, (g12 + g21).data)
 
         # Greater component
-        assert_array_equal(greater(g), g21)
+        assert_array_equal(g.greater(), g21)
         # Lesser component
-        assert_array_equal(lesser(g), g12)
+        assert_array_equal(g.lesser(), g12)
         # Retarded component
-        g_ret = retarded(g)
+        g_ret = g.retarded()
         for p in g_ret.mesh:
             t0, t1 = p[0], p[1]
             ref = g21[p] - g12[p] if t0.linear_index >= t1.linear_index else 0
             assert_array_equal(g_ret[p], ref)
         # Advanced component
-        g_adv = advanced(g)
+        g_adv = g.advanced()
         for p in g_adv.mesh:
             t0, t1 = p[0], p[1]
             ref = g12[p] - g21[p] if t0.linear_index <= t1.linear_index else 0
             assert_array_equal(g_adv[p], ref)
         # Extended retarded component
-        g_ret_ext = retarded_ext(g)
+        g_ret_ext = g.retarded_ext()
         for p in g_ret_ext.mesh:
             assert_array_equal(g_ret_ext[p], g21[p] - g12[p])
         # Extended advanced component
-        g_adv_ext = advanced_ext(g)
+        g_adv_ext = g.advanced_ext()
         for p in g_adv_ext.mesh:
             assert_array_equal(g_adv_ext[p], g12[p] - g21[p])
 
@@ -442,12 +435,12 @@ class test_keldysh(unittest.TestCase):
             g_l[t1, t2] = -1j * -0.1 * e
 
         g = from_lesser_greater(g_l, g_g)
-        self.assertTrue(is_hermitian(g))
+        self.assertTrue(g.is_hermitian())
         g_hc = herm_conj(g)
         assert_keldysh_gf_almost_equal(g_hc, g)
-        assert_gfs_are_close(greater(g), -conj(greater(g_hc)))
-        assert_gfs_are_close(lesser(g), -conj(lesser(g_hc)))
-        assert_gfs_are_close(retarded(g), conj(advanced(g_hc)))
+        assert_gfs_are_close(g.greater(), -conj(g_hc.greater()))
+        assert_gfs_are_close(g.lesser(), -conj(g_hc.lesser()))
+        assert_gfs_are_close(g.retarded(), conj(g_hc.advanced()))
 
         # Matrix-valued GF
         h_mat = np.array([[1.0, 0.5j], [-0.5j, 2.0]])
@@ -460,12 +453,12 @@ class test_keldysh(unittest.TestCase):
             g_g[t1, t2] = -1j * (1.0 - 0.1) * e
             g_l[t1, t2] = -1j * -0.1 * e
         g = from_lesser_greater(g_l, g_g)
-        self.assertTrue(is_hermitian(g))
+        self.assertTrue(g.is_hermitian())
         g_hc = herm_conj(g)
         assert_keldysh_gf_almost_equal(g_hc, g)
-        assert_gfs_are_close(greater(g), -conj(greater(g_hc)))
-        assert_gfs_are_close(lesser(g), -conj(lesser(g_hc)))
-        assert_gfs_are_close(retarded(g), conj(advanced(g_hc)))
+        assert_gfs_are_close(g.greater(), -conj(g_hc.greater()))
+        assert_gfs_are_close(g.lesser(), -conj(g_hc.lesser()))
+        assert_gfs_are_close(g.retarded(), conj(g_hc.advanced()))
 
         # Matrix-valued GF with an extra k-mesh component
         n_k = 4
@@ -482,12 +475,12 @@ class test_keldysh(unittest.TestCase):
                 g_g[t1, t2, k] = -1j * (1.0 - 0.1) * e
                 g_l[t1, t2, k] = -1j * -0.1 * e
         g = from_lesser_greater(g_l, g_g)
-        self.assertTrue(is_hermitian(g))
+        self.assertTrue(g.is_hermitian())
         g_hc = herm_conj(g)
         assert_keldysh_gf_almost_equal(g_hc, g)
-        assert_gfs_are_close(greater(g), -conj(greater(g_hc)))
-        assert_gfs_are_close(lesser(g), -conj(lesser(g_hc)))
-        assert_gfs_are_close(retarded(g), conj(advanced(g_hc)))
+        assert_gfs_are_close(g.greater(), -conj(g_hc.greater()))
+        assert_gfs_are_close(g.lesser(), -conj(g_hc.lesser()))
+        assert_gfs_are_close(g.retarded(), conj(g_hc.advanced()))
 
     def _single_state_g_l(self, occ, eps, dt):
         return (-1j * (1 - occ) * np.exp(-1j * eps * dt),

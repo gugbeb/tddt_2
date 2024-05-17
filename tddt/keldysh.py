@@ -280,13 +280,13 @@ class KeldyshGF:
 
         # High-accuracy approach for a convolution of two 2-point GFs
 
-        self_l = lesser(self)
-        self_g = greater(self)
-        self_ret = retarded_ext(self)
+        self_l = self.lesser()
+        self_g = self.greater()
+        self_ret = self.retarded_ext()
 
-        other_l = lesser(other)
-        other_g = greater(other)
-        other_adv = advanced_ext(other)
+        other_l = other.lesser()
+        other_g = other.greater()
+        other_adv = other.advanced_ext()
 
         conv_l = conv_ret_lg(self_ret, other_l) + conv_lg_adv(self_l, other_adv)
         conv_g = conv_ret_lg(self_ret, other_g) + conv_lg_adv(self_g, other_adv)
@@ -296,6 +296,115 @@ class KeldyshGF:
             conv_g,
             n_left_target_axes=len(self.arg_index_shapes[0])
         )
+
+    #
+    # Functions specific to the 2-point GFs
+    #
+
+    def greater(self) -> Gf:
+        r"""
+        Returns the greater component of a 2-point Keldysh Green's function
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+        return self[Branch.BACKWARD, Branch.FORWARD]
+
+    def lesser(self) -> Gf:
+        r"""
+        Returns the lesser component of a 2-point Keldysh Green's function
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+        return self[Branch.FORWARD, Branch.BACKWARD]
+
+    def retarded(self) -> Gf:
+        r"""
+        Returns the retarded component of a 2-point Keldysh Green's function
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+        g_g = self[Branch.BACKWARD, Branch.FORWARD]
+        g_l = self[Branch.FORWARD, Branch.BACKWARD]
+        g_ret = Gf(mesh=self.mesh, target_shape=self.target_shape)
+        tril_idx = np.tril_indices(len(self.time_mesh.components[0]),
+                                   0,
+                                   len(self.time_mesh.components[1]))
+        g_ret.data[tril_idx] = g_g.data[tril_idx] - g_l.data[tril_idx]
+        return g_ret
+
+    def retarded_ext(self) -> Gf:
+        r"""
+        Returns the retarded component of a 2-point Keldysh Green's function
+        G^r(t, t') continuously extended to the domain t < t'.
+        The extended retarded component is defined as
+
+            \tiled G^r(t, t') = G^>(t, t') - G^<(t, t').
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+        g_g = self[Branch.BACKWARD, Branch.FORWARD]
+        g_l = self[Branch.FORWARD, Branch.BACKWARD]
+        g_ret = Gf(mesh=self.mesh, target_shape=self.target_shape)
+        g_ret.data[...] = g_g.data - g_l.data
+        return g_ret
+
+    def advanced(self) -> Gf:
+        r"""
+        Returns the advanced component of a 2-point Keldysh Green's function
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+        g_g = self[Branch.BACKWARD, Branch.FORWARD]
+        g_l = self[Branch.FORWARD, Branch.BACKWARD]
+        g_adv = Gf(mesh=self.mesh, target_shape=self.target_shape)
+        triu_idx = np.triu_indices(len(self.time_mesh.components[0]),
+                                   0,
+                                   len(self.time_mesh.components[1]))
+        g_adv.data[triu_idx] = g_l.data[triu_idx] - g_g.data[triu_idx]
+        return g_adv
+
+    def advanced_ext(self) -> Gf:
+        r"""
+        Returns the advanced component of a 2-point Keldysh Green's function
+        G^a(t, t') continuously extended to the domain t > t'.
+        The extended advanced component is defined as
+
+            \tiled G^a(t, t') = G^<(t, t') - G^>(t, t').
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+        g_g = self[Branch.BACKWARD, Branch.FORWARD]
+        g_l = self[Branch.FORWARD, Branch.BACKWARD]
+        g_adv = Gf(mesh=self.mesh, target_shape=self.target_shape)
+        g_adv.data[...] = g_l.data - g_g.data
+        return g_adv
+
+    def is_hermitian(self, *, atol=.0) -> bool:
+        r"""
+        Checks if a 2-point Keldysh Green's function is Hermitian in the sense
+        of the NESSi paper.
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+
+        if self.time_mesh.components[0] != self.time_mesh.components[1]:
+            return False
+        if self.arg_index_shapes[0] != self.arg_index_shapes[1]:
+            return False
+
+        nli = len(self.arg_index_shapes[0])
+
+        axes_from = (0, 1, *range(-1, - nli - 1, -1))
+        axes_to = (1, 0, *range(-1 - nli, -2 * nli - 1, -1))
+
+        for comp in (self.greater(), self.lesser()):
+            if not np.allclose(
+                    comp.data,
+                    -np.conj(np.moveaxis(comp.data, axes_from, axes_to)),
+                    atol=atol):
+                return False
+
+        return True
 
 
 def target_dot(g: KeldyshGF,
@@ -339,81 +448,6 @@ def target_dot(g: KeldyshGF,
     return res
 
 
-#
-# Functions specific to the 2-point GFs
-#
-
-
-def greater(g: KeldyshGF) -> Gf:
-    r"""Returns the greater component of a 2-point Keldysh Green's function"""
-    assert g.n_args == 2, "g must be a 2-point Green's function"
-    return g[Branch.BACKWARD, Branch.FORWARD]
-
-
-def lesser(g: KeldyshGF) -> Gf:
-    r"""Returns the lesser component of a 2-point Keldysh Green's function"""
-    assert g.n_args == 2, "g must be a 2-point Green's function"
-    return g[Branch.FORWARD, Branch.BACKWARD]
-
-
-def retarded(g: KeldyshGF) -> Gf:
-    r"""Returns the retarded component of a 2-point Keldysh Green's function"""
-    assert g.n_args == 2, "g must be a 2-point Green's function"
-    g_g = g[Branch.BACKWARD, Branch.FORWARD]
-    g_l = g[Branch.FORWARD, Branch.BACKWARD]
-    g_ret = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    tril_idx = np.tril_indices(len(g.time_mesh.components[0]),
-                               0,
-                               len(g.time_mesh.components[1]))
-    g_ret.data[tril_idx] = g_g.data[tril_idx] - g_l.data[tril_idx]
-    return g_ret
-
-
-def retarded_ext(g: KeldyshGF) -> Gf:
-    r"""
-    Returns the retarded component of a 2-point Keldysh Green's function
-    G^r(t, t') continuously extended to the domain t < t'.
-    The extended retarded component is defined as
-
-        \tiled G^r(t, t') = G^>(t, t') - G^<(t, t').
-    """
-    assert g.n_args == 2, "g must be a 2-point Green's function"
-    g_g = g[Branch.BACKWARD, Branch.FORWARD]
-    g_l = g[Branch.FORWARD, Branch.BACKWARD]
-    g_ret = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    g_ret.data[...] = g_g.data - g_l.data
-    return g_ret
-
-
-def advanced(g: KeldyshGF) -> Gf:
-    r"""Returns the advanced component of a 2-point Keldysh Green's function"""
-    assert g.n_args == 2, "g must be a 2-point Green's function"
-    g_g = g[Branch.BACKWARD, Branch.FORWARD]
-    g_l = g[Branch.FORWARD, Branch.BACKWARD]
-    g_adv = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    triu_idx = np.triu_indices(len(g.time_mesh.components[0]),
-                               0,
-                               len(g.time_mesh.components[1]))
-    g_adv.data[triu_idx] = g_l.data[triu_idx] - g_g.data[triu_idx]
-    return g_adv
-
-
-def advanced_ext(g: KeldyshGF) -> Gf:
-    r"""
-    Returns the advanced component of a 2-point Keldysh Green's function
-    G^a(t, t') continuously extended to the domain t > t'.
-    The extended advanced component is defined as
-
-        \tiled G^a(t, t') = G^<(t, t') - G^>(t, t').
-    """
-    assert g.n_args == 2, "g must be a 2-point Green's function"
-    g_g = g[Branch.BACKWARD, Branch.FORWARD]
-    g_l = g[Branch.FORWARD, Branch.BACKWARD]
-    g_adv = Gf(mesh=g.mesh, target_shape=g.target_shape)
-    g_adv.data[...] = g_l.data - g_g.data
-    return g_adv
-
-
 def herm_conj(g: KeldyshGF) -> KeldyshGF:
     r"""
     Returns the Hermitian conjugate of a 2-point Keldysh Green's function as
@@ -421,8 +455,8 @@ def herm_conj(g: KeldyshGF) -> KeldyshGF:
     """
     assert g.n_args == 2, "g must be a 2-point Green's function"
 
-    g_g = greater(g)
-    g_l = lesser(g)
+    g_g = g.greater()
+    g_l = g.lesser()
 
     mesh_conj = MeshProduct(g.time_mesh[1],
                             g.time_mesh[0],
@@ -440,32 +474,6 @@ def herm_conj(g: KeldyshGF) -> KeldyshGF:
     g_conj_l.data[:] = -np.conj(np.moveaxis(g_l.data, axes_from, axes_to))
 
     return from_lesser_greater(g_conj_l, g_conj_g, n_left_target_axes=nri)
-
-
-def is_hermitian(g: KeldyshGF, *, atol=.0) -> bool:
-    r"""
-    Checks if a 2-point Keldysh Green's function is Hermitian in the sense of
-    the NESSi paper.
-    """
-    assert g.n_args == 2, "g must be a 2-point Green's function"
-
-    if g.time_mesh.components[0] != g.time_mesh.components[1]:
-        return False
-    if g.arg_index_shapes[0] != g.arg_index_shapes[1]:
-        return False
-
-    nli = len(g.arg_index_shapes[0])
-
-    axes_from = (0, 1, *range(-1, - nli - 1, -1))
-    axes_to = (1, 0, *range(-1 - nli, -2 * nli - 1, -1))
-
-    for comp in (greater(g), lesser(g)):
-        if not np.allclose(comp.data,
-                           -np.conj(np.moveaxis(comp.data, axes_from, axes_to)),
-                           atol=atol):
-            return False
-
-    return True
 
 
 def from_lesser_greater(g_l: Gf, g_g: Gf, n_left_target_axes=None) -> KeldyshGF:

@@ -8,12 +8,7 @@ import numpy as np
 from triqs.gf import Gf, MeshReTime
 
 from .retime import conj, conv_lg_adv
-from .keldysh import (KeldyshGF,
-                      lesser,
-                      retarded,
-                      retarded_ext,
-                      is_hermitian,
-                      from_lesser_greater)
+from .keldysh import KeldyshGF, from_lesser_greater
 from .integration import GregoryIntegrator
 
 
@@ -261,7 +256,7 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
 
     The resulting G(t, t') is also Hermitian.
     """
-    assert is_hermitian(Q), "Q must be Hermitian"
+    assert Q.is_hermitian(), "Q must be Hermitian"
     assert F.n_args == 2, "F must be a 2-point GF"
     assert F.time_mesh.components[1] == Q.time_mesh.components[0], \
         "Incompatible time meshes of F and Q"
@@ -290,8 +285,8 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
     # Solve equation for the extended retarded component of G
     #
 
-    Q_ret = retarded(Q)
-    F_ret_ext = retarded_ext(F)
+    Q_ret = Q.retarded()
+    F_ret_ext = F.retarded_ext()
     G_ret_ext = Gf(mesh=Q.mesh, target_shape=Q.target_shape)
 
     for non_t_idx in np.ndindex(non_time_mesh_shape):
@@ -303,9 +298,9 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
     # Solve equation for the lesser component of G
     #
 
-    F_l = lesser(F)
+    F_l = F.lesser()
     G_adv_ext = conj(G_ret_ext)  # This applies only for a Hermitian G(t, t')
-    rhs_l = lesser(Q) - conv_lg_adv(F_l, G_adv_ext)
+    rhs_l = Q.lesser() - conv_lg_adv(F_l, G_adv_ext)
     G_l = Gf(mesh=rhs_l.mesh, target_shape=rhs_l.target_shape)
 
     time_mesh_shape2 = (len(rhs_l.mesh.components[1]),)

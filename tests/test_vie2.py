@@ -8,7 +8,7 @@ from triqs.gf import Gf, MeshReTime, MeshBrillouinZone, MeshProduct
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
-from tddt.keldysh import from_lesser_greater, retarded
+from tddt.keldysh import from_lesser_greater
 from tddt.vie2 import VIE2Solver, solve_vie2
 from tddt.testing import assert_keldysh_gf_almost_equal
 
@@ -291,7 +291,7 @@ class test_vie2(unittest.TestCase):
                        + exp(-1j * (delta - 1) * dt) * (eps + 1 + delta))
                        * (sx + sy) / sqrt(2))
 
-        assert_gfs_are_close(retarded(G), G_ret_ref, precision=1e-8)
+        assert_gfs_are_close(G.retarded(), G_ret_ref, precision=1e-8)
 
 
 if __name__ == '__main__':

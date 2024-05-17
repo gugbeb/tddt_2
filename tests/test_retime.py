@@ -7,11 +7,7 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
 from tddt.retime import conj, conv_ret_ret, conv_ret_lg, conv_lg_adv
-from tddt.keldysh import (from_lesser_greater,
-                          retarded,
-                          retarded_ext,
-                          advanced,
-                          advanced_ext)
+from tddt.keldysh import from_lesser_greater
 from tddt.integration import GregoryIntegrator
 
 
@@ -75,16 +71,16 @@ class test_retime(unittest.TestCase):
         g_l, g_g = self._make_g_l_g_g_scalar()
         g = from_lesser_greater(g_l, g_g)
 
-        g_adv = conj(retarded(g))
-        g_adv_ref = advanced(g)
+        g_adv = conj(g.retarded())
+        g_adv_ref = g.advanced()
         assert_gfs_are_close(g_adv, g_adv_ref, precision=1e-12)
 
         # Matrix-valued GF
         g_l, g_g = self._make_g_l_g_g_matrix()
         g = from_lesser_greater(g_l, g_g)
 
-        g_adv = conj(retarded(g))
-        g_adv_ref = advanced(g)
+        g_adv = conj(g.retarded())
+        g_adv_ref = g.advanced()
         assert_gfs_are_close(g_adv, g_adv_ref, precision=1e-12)
 
         # Matrix-valued GF with an extra mesh component
@@ -92,8 +88,8 @@ class test_retime(unittest.TestCase):
         g_l, g_g = self._make_g_l_g_g_matrix_bz(bz_mesh)
         g = from_lesser_greater(g_l, g_g)
 
-        g_adv = conj(retarded(g))
-        g_adv_ref = advanced(g)
+        g_adv = conj(g.retarded())
+        g_adv_ref = g.advanced()
         assert_gfs_are_close(g_adv, g_adv_ref, precision=1e-12)
 
     def test_conv_scalar(self):
@@ -107,9 +103,9 @@ class test_retime(unittest.TestCase):
         a = from_lesser_greater(a_l, a_g)
         b = from_lesser_greater(b_l, b_g)
 
-        a_ret_ext = retarded_ext(a)
-        b_ret_ext = retarded_ext(b)
-        b_adv_ext = advanced_ext(b)
+        a_ret_ext = a.retarded_ext()
+        b_ret_ext = b.retarded_ext()
+        b_adv_ext = b.advanced_ext()
 
         a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
         a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
@@ -167,9 +163,9 @@ class test_retime(unittest.TestCase):
         a = from_lesser_greater(a_l, a_g)
         b = from_lesser_greater(b_l, b_g)
 
-        a_ret_ext = retarded_ext(a)
-        b_ret_ext = retarded_ext(b)
-        b_adv_ext = advanced_ext(b)
+        a_ret_ext = a.retarded_ext()
+        b_ret_ext = b.retarded_ext()
+        b_adv_ext = b.advanced_ext()
 
         a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
         a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
@@ -235,9 +231,9 @@ class test_retime(unittest.TestCase):
         a = from_lesser_greater(a_l, a_g)
         b = from_lesser_greater(b_l, b_g)
 
-        a_ret_ext = retarded_ext(a)
-        b_ret_ext = retarded_ext(b)
-        b_adv_ext = advanced_ext(b)
+        a_ret_ext = a.retarded_ext()
+        b_ret_ext = b.retarded_ext()
+        b_adv_ext = b.advanced_ext()
 
         a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
         a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
@@ -311,9 +307,9 @@ class test_retime(unittest.TestCase):
         a = from_lesser_greater(a_l, a_g)
         b = from_lesser_greater(b_l, b_g)
 
-        a_ret_ext = retarded_ext(a)
-        b_ret_ext = retarded_ext(b)
-        b_adv_ext = advanced_ext(b)
+        a_ret_ext = a.retarded_ext()
+        b_ret_ext = b.retarded_ext()
+        b_adv_ext = b.advanced_ext()
 
         a_ret_b_l = conv_ret_lg(a_ret_ext, b_l)
         a_l_b_adv = conv_lg_adv(a_l, b_adv_ext)
