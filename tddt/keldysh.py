@@ -60,7 +60,58 @@ def contour_ordering(*points):
                         reverse=True))
 
 
-class KeldyshGF:
+class ComponentwiseArithmetics:
+    """
+    Defines basic arithmetic operations in a component-wise manner.
+    """
+    def __eq__(self, other):
+        return (self.mesh == other.mesh
+                and self.arg_index_shapes == other.arg_index_shapes
+                and (self.components == other.components).all())
+
+    def __iadd__(self, other):
+        assert self.mesh == other.mesh
+        assert self.arg_index_shapes == other.arg_index_shapes
+        self.components += other.components
+        return self
+
+    def __isub__(self, other):
+        assert self.mesh == other.mesh
+        assert self.arg_index_shapes == other.arg_index_shapes
+        self.components -= other.components
+        return self
+
+    def __imul__(self, x):
+        self.components *= x
+        return self
+
+    def __add__(self, other):
+        res = deepcopy(self)
+        res += other
+        return res
+
+    def __sub__(self, other):
+        res = deepcopy(self)
+        res -= other
+        return res
+
+    def __mul__(self, x):
+        res = deepcopy(self)
+        res *= x
+        return res
+
+    def __rmul__(self, x):
+        res = deepcopy(self)
+        res *= x
+        return res
+
+    def __neg__(self):
+        res = deepcopy(self)
+        res *= -1
+        return res
+
+
+class KeldyshGF(ComponentwiseArithmetics):
     """Generic N-point Green's function defined on a 2-branch Keldysh contour"""
 
     """Integrator object for contour convolutions"""
@@ -326,54 +377,8 @@ class KeldyshGF:
             raise IndexError(f"Unrecognized index format: {args}")
 
     #
-    # Simple arithmetic
+    # Arithmetics
     #
-
-    def __eq__(self, other):
-        return self.mesh == other.mesh and \
-            self.arg_index_shapes == other.arg_index_shapes and \
-            (self.components == other.components).all()
-
-    def __iadd__(self, other):
-        assert self.mesh == other.mesh
-        assert self.arg_index_shapes == other.arg_index_shapes
-        self.components += other.components
-        return self
-
-    def __isub__(self, other):
-        assert self.mesh == other.mesh
-        assert self.arg_index_shapes == other.arg_index_shapes
-        self.components -= other.components
-        return self
-
-    def __imul__(self, x):
-        self.components *= x
-        return self
-
-    def __add__(self, other):
-        res = deepcopy(self)
-        res += other
-        return res
-
-    def __sub__(self, other):
-        res = deepcopy(self)
-        res -= other
-        return res
-
-    def __mul__(self, x):
-        res = deepcopy(self)
-        res *= x
-        return res
-
-    def __rmul__(self, x):
-        res = deepcopy(self)
-        res *= x
-        return res
-
-    def __neg__(self):
-        res = deepcopy(self)
-        res *= -1
-        return res
 
     def __matmul__(self, other):
         r"""
@@ -512,6 +517,146 @@ class KeldyshGF:
                 return False
 
         return True
+
+
+class Singular2PKeldyshGF(ComponentwiseArithmetics):
+    r"""
+    2-point Green's function defined on a 2-branch Keldysh contour and
+    proportional to a contour delta-function \delta_C(t, t').
+    """
+
+    def __init__(
+            self, *,
+            mesh: Union[MeshReTime, MeshProduct],
+            target_shape: Optional[Tuple[int, ...]] = None,
+            arg_index_shapes: Optional[Tuple[Tuple[int, ...],
+                                             Tuple[int, ...]]] = None):
+
+        #
+        # Process the supplied mesh
+        #
+
+        if isinstance(mesh, MeshReTime):
+            self.mesh = MeshProduct(mesh)
+            self.time_mesh = self.mesh
+            self.non_time_mesh = MeshProduct()
+
+        elif isinstance(mesh, MeshProduct):
+            assert len(mesh.components) >= 1 and \
+                isinstance(mesh.components[0], MeshReTime), \
+                "Supplied mesh must have one real time component"
+
+            self.mesh = mesh
+            self.time_mesh = MeshProduct(mesh.components[0])
+            self.non_time_mesh = MeshProduct(*mesh.components[1:])
+
+        else:
+            raise TypeError(f"Unsupported mesh type {type(mesh)}")
+
+        #
+        # Process the target subshapes
+        #
+
+        # All subshapes are 0-dimensional by default
+        if (target_shape is None) and (arg_index_shapes is None):
+            self.arg_index_shapes = ((), ())
+            self.target_shape = ()
+
+        elif (target_shape is None) and (arg_index_shapes is not None):
+            assert len(arg_index_shapes) == 2, \
+                "arg_index_shapes must contain 2 elements"
+            self.arg_index_shapes = tuple(arg_index_shapes)
+            self.target_shape = sum(arg_index_shapes, ())
+
+        elif (target_shape is not None) and (arg_index_shapes is None):
+            assert len(target_shape) % 2 == 0, \
+                "Target shape must have a multiple of 2 elements"
+            self.target_shape = tuple(target_shape)
+            tss_len = len(self.target_shape) // 2
+            self.arg_index_shapes = tuple(
+                self.target_shape[i:i + tss_len]
+                for i in range(0, len(self.target_shape), tss_len)
+            )
+
+        else:
+            raise RuntimeError(
+                "target_shape and arg_index_shapes are mutually exclusive"
+            )
+
+        #
+        # Allocate data storage
+        #
+
+        self.components = np.array(
+            [Gf(mesh=self.mesh, target_shape=self.target_shape)
+             for _ in range(2)]
+        )
+
+    @classmethod
+    def from_retime(cls,
+                    g: Gf,
+                    n_left_target_axes=None) -> Singular2PKeldyshGF:
+        r"""
+        Construct a singular 2-point Keldysh GF object G(z, z') from a
+        real-time function g(t), G(z, z') = g(t) \delta_C(z, z').
+        """
+        assert isinstance(g.mesh, MeshReTime) \
+               or (isinstance(g.mesh, MeshProduct)
+                   and len(g.mesh.components) >= 1
+                   and isinstance(g.mesh.components[0], MeshReTime))
+
+        if n_left_target_axes is None:
+            assert len(g.target_shape) % 2 == 0
+            n_left_target_axes = len(g.target_shape) // 2
+
+        arg_index_shapes = (g.target_shape[:n_left_target_axes],
+                            g.target_shape[n_left_target_axes:])
+
+        gs = Singular2PKeldyshGF(mesh=g.mesh, arg_index_shapes=arg_index_shapes)
+        gs[Branch.FORWARD] = g
+        gs[Branch.BACKWARD] = g
+
+        return gs
+
+    def __getitem__(self, args):
+        args_t = args if isinstance(args, tuple) else (args,)
+
+        assert len(args_t) >= 1, "At least one argument is required"
+
+        if isinstance(args_t[0], Branch):
+            if len(args_t) == 1:  # Access one Keldysh block
+                return self.components[args_t[0].value]
+            else:  # Pass extra indices to the block
+                return self.components[args_t[0].value][args_t[1:]]
+
+        # Access a single point of the time mesh
+        elif len(args_t) == 1 and isinstance(args_t[0], ContourPoint):
+            g = self.components[args_t[0].branch.value]
+            return g[(args_t[0].t,)
+                     + (slice(None),) * len(self.non_time_mesh.components)]
+
+        else:
+            raise IndexError(f"Unrecognized index format: {args}")
+
+    def __setitem__(self, args, value):
+        args_t = args if isinstance(args, tuple) else (args,)
+
+        assert len(args_t) >= 1, "At least one argument is required"
+
+        if isinstance(args_t[0], Branch):
+            if len(args_t) == 1:  # Access one Keldysh block
+                self.components[args_t[0].value] = value
+            else:  # Pass extra indices to the block
+                self.components[args_t[0].value][args_t[1:]] = value
+
+        # Access a single point of the time mesh
+        elif len(args_t) == 1 and isinstance(args_t[0], ContourPoint):
+            g = self.components[args_t[0].branch.value]
+            g[(args_t[0].t,)
+              + (slice(None),) * len(self.non_time_mesh.components)] = value
+
+        else:
+            raise IndexError(f"Unrecognized index format: {args}")
 
 
 def target_dot(g: KeldyshGF,
