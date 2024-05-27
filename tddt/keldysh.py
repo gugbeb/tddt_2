@@ -12,7 +12,9 @@ import numpy as np
 
 from triqs.gf import Gf, MeshReTime, MeshPoint, MeshProduct
 
-from .util import subscripts
+from .util import (subscripts,
+                   make_conv_res_nontime_mesh,
+                   make_conv_nontime_einsum_subscripts)
 from .integration import GregoryIntegrator
 from .retime import conv_ret_lg, conv_lg_adv
 
@@ -538,7 +540,7 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
 
         if isinstance(mesh, MeshReTime):
             self.mesh = MeshProduct(mesh)
-            self.time_mesh = self.mesh
+            self.time_mesh = mesh
             self.non_time_mesh = MeshProduct()
 
         elif isinstance(mesh, MeshProduct):
@@ -547,7 +549,7 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
                 "Supplied mesh must have one real time component"
 
             self.mesh = mesh
-            self.time_mesh = MeshProduct(mesh.components[0])
+            self.time_mesh = mesh.components[0]
             self.non_time_mesh = MeshProduct(*mesh.components[1:])
 
         else:
@@ -657,6 +659,79 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
 
         else:
             raise IndexError(f"Unrecognized index format: {args}")
+
+    #
+    # Arithmetics
+    #
+
+    def __matmul__(self, other):
+        r"""
+        Contour convolution over the second argument of 'self' and
+        the first argument of 'other'.
+        """
+
+        if not isinstance(other, Singular2PKeldyshGF):
+            return NotImplemented
+
+        assert self.time_mesh == other.time_mesh, \
+            f"Incompatible time meshes {self.time_mesh} and {other.time_mesh}"
+
+        #
+        # Generate einsum() subscripts
+        #
+
+        sub_t = subscripts['time'][0]
+
+        mesh_comps_res = make_conv_res_nontime_mesh(self.mesh.components[1:],
+                                                    other.mesh.components[1:])
+        subs_self_nt, subs_other_nt, subs_res_nt = \
+            make_conv_nontime_einsum_subscripts(self.mesh.components[1:],
+                                                other.mesh.components[1:])
+
+        subshape_self = self.arg_index_shapes
+        subshape_other = other.arg_index_shapes
+        assert subshape_self[1] == subshape_other[0], \
+            "Incompatible target sub-shapes " \
+            f"{subshape_self} and {subshape_other}"
+
+        # Gather components of the resulting subshapes
+        subshapes_res = (subshape_self[0], subshape_other[1])
+        subs_tgs = subscripts['target']
+
+        subs_self_tg = subs_tgs[:len(subshape_self[0]) + len(subshape_self[1])]
+        subs_other_tg = subs_tgs[
+            len(subshape_self[0]):
+            len(subshape_self[0])
+                + len(subshape_other[0]) + len(subshape_other[1])
+        ]
+        subs_res_tg = subs_tgs[:len(subshape_self[0])] + subs_tgs[
+            len(subshape_self[0]) + len(subshape_self[1]):
+            len(subshape_self[0]) + len(subshape_self[1])
+                + len(subshape_other[1])
+        ]
+
+        #
+        # Perform summation
+        #
+
+        subs_self = sub_t + subs_self_nt + subs_self_tg
+        subs_other = sub_t + subs_other_nt + subs_other_tg
+        subs_res = sub_t + subs_res_nt + subs_res_tg
+
+        subs = f"{subs_self},{subs_other}->{subs_res}"
+
+        res = Singular2PKeldyshGF(
+            mesh=MeshProduct(self.time_mesh, *mesh_comps_res),
+            arg_index_shapes=subshapes_res
+        )
+
+        for br in Branch:
+            res[br].data[:] = np.einsum(subs,
+                                        self[br].data,
+                                        other[br].data,
+                                        optimize="optimal")
+
+        return res
 
 
 def target_dot(g: KeldyshGF,
@@ -865,29 +940,11 @@ def conv(a: KeldyshGF,  # noqa: C901
     # Handle the non-time components of the meshes
     #
 
-    nt_mesh_a = a.non_time_mesh.components
-    nt_mesh_b = b.non_time_mesh.components
-
-    nts = subscripts['nontime']
-    if nt_mesh_a == nt_mesh_b:
-        # If the non-time components of the meshes of a and b agree, then we
-        # use the same non-time mesh for the result
-        ss = nts[:len(nt_mesh_a)]
-        subs_a_nt = ss
-        subs_b_nt = ss
-        subs_res_nt = ss
-
-        mesh_comps_res += nt_mesh_a
-    else:
-        # Otherwise the result is defined on a direct product of the meshes.
-        ss = nts[:len(nt_mesh_a)]
-        subs_a_nt = ss
-        subs_res_nt = ss
-        ss = nts[len(nt_mesh_a):len(nt_mesh_a) + len(nt_mesh_b)]
-        subs_b_nt = ss
-        subs_res_nt += ss
-
-        mesh_comps_res += nt_mesh_a + nt_mesh_b
+    mesh_comps_res += make_conv_res_nontime_mesh(a.non_time_mesh.components,
+                                                 b.non_time_mesh.components)
+    subs_a_nt, subs_b_nt, subs_res_nt = \
+        make_conv_nontime_einsum_subscripts(a.non_time_mesh.components,
+                                            b.non_time_mesh.components)
 
     #
     # Handle the targets

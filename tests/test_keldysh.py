@@ -17,19 +17,16 @@ from tddt.keldysh import (Branch,
                           Singular2PKeldyshGF,
                           target_dot,
                           herm_conj)
-from tddt.testing import assert_keldysh_gf_almost_equal
+from tddt.testing import (assert_keldysh_gf_almost_equal,
+                          assert_singular_2p_keldysh_gf_almost_equal)
 
 
 CP = ContourPoint
 FW, BW = Branch.FORWARD, Branch.BACKWARD
 
 
-class test_keldysh(unittest.TestCase):
-    """Keldysh Green's functions and vertices"""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
+class TestContourPoint(unittest.TestCase):
+    """Points on the Keldysh contour and their ordering"""
 
     def test_contour_ordering2(self):
         t_mesh = MeshReTime(0, 6.0, 7)
@@ -182,6 +179,14 @@ class test_keldysh(unittest.TestCase):
                 order
             )
 
+
+class TestKeldyshGF(unittest.TestCase):
+    """Keldysh Green's functions and vertices"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
+
     def _test_gf(self, g):
         # Check Aoki RMP Eq. (16)
         g11 = g[Branch.FORWARD, Branch.FORWARD]
@@ -264,7 +269,7 @@ class test_keldysh(unittest.TestCase):
         # Equality
         self.assertEqual(g, g)
 
-    def test_keldysh_gf_n_args1(self):
+    def test_n_args1(self):
         t_mesh = MeshReTime(0, 6.0, 7)
         for mesh in (t_mesh, MeshProduct(t_mesh)):
             g = KeldyshGF(mesh=mesh, arg_index_shapes=((3,),))
@@ -295,7 +300,7 @@ class test_keldysh(unittest.TestCase):
             assert_array_equal(g.components[0].data[0, :], 6.0 * np.ones(3))
             assert_array_equal(g.components[0].data[1, :], 4.0 * np.ones(3))
 
-    def test_keldysh_gf_n_args1_bz(self):
+    def test_n_args1_bz(self):
         n_k = 10
         t_mesh = MeshReTime(0, 6.0, 7)
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
@@ -333,7 +338,7 @@ class test_keldysh(unittest.TestCase):
             g[Branch.BACKWARD, t0, k] = i
             assert_array_equal(g.components[1].data[0, i, :], i * np.ones(3))
 
-    def test_keldysh_gf(self):
+    def test_common(self):
         tt_mesh = MeshProduct(MeshReTime(0, 6.0, 7), MeshReTime(0, 6.0, 8))
 
         for target_shape in ((), (2, 2)):
@@ -378,7 +383,7 @@ class test_keldysh(unittest.TestCase):
                                           i[0], i[1], i[2], i[3], i[4]],
                     val * np.ones((7, 8, 9)))
 
-    def test_keldysh_gf_bz(self):
+    def test_common_bz(self):
         tt_mesh = MeshProduct(MeshReTime(0, 6.0, 7), MeshReTime(0, 6.0, 8))
         n_k = 10
         bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
@@ -507,7 +512,7 @@ class test_keldysh(unittest.TestCase):
                 )
                 )
 
-    def test_keldysh_gf_convolution_scalar(self):
+    def test_convolution_scalar(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -542,7 +547,7 @@ class test_keldysh(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_keldysh_gf_convolution_matrix(self):
+    def test_convolution_matrix(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -582,7 +587,7 @@ class test_keldysh(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_keldysh_gf_convolution_scalar_bz(self):
+    def test_convolution_scalar_bz(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -627,7 +632,7 @@ class test_keldysh(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_keldysh_gf_convolution_matrix_bz(self):
+    def test_convolution_matrix_bz(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -673,7 +678,7 @@ class test_keldysh(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_keldysh_gf_convolution_scalar_bz1_bz2(self):
+    def test_convolution_scalar_bz1_bz2(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -722,7 +727,7 @@ class test_keldysh(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_keldysh_gf_convolution_matrix_bz1_bz2(self):
+    def test_convolution_matrix_bz1_bz2(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -776,136 +781,6 @@ class test_keldysh(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_singular_2p_keldysh_gf(self):
-        t_mesh = MeshReTime(0, 6.0, 7)
-
-        g = Singular2PKeldyshGF(mesh=t_mesh, arg_index_shapes=((3,), (4,)))
-
-        self.assertEqual(g.mesh, MeshProduct(t_mesh))
-        self.assertEqual(g.time_mesh, MeshProduct(t_mesh))
-        self.assertEqual(g.non_time_mesh, MeshProduct())
-        self.assertEqual(g.components.shape, (2,))
-
-        t0, t1 = list(t_mesh)[:2]
-
-        # __getitem__()
-        g.components[1].data[:] = 2.0
-        assert_array_equal(g[Branch.BACKWARD].data, 2.0 * np.ones((7, 3, 4)))
-        g.components[1].data[0, :] = 3.0
-        assert_array_equal(g[CP(Branch.BACKWARD, t0)], 3.0 * np.ones((3, 4)))
-        assert_array_equal(g[CP(Branch.BACKWARD, t1)], 2.0 * np.ones((3, 4)))
-
-        # __setitem__()
-        g[Branch.FORWARD].data[:] = 4.0
-        assert_array_equal(g.components[0].data, 4.0 * np.ones((7, 3, 4)))
-        g[CP(Branch.FORWARD, t0)] = 5.0
-        assert_array_equal(g.components[0].data[0, :], 5.0 * np.ones((3, 4)))
-        assert_array_equal(g.components[0].data[1, :], 4.0 * np.ones((3, 4)))
-
-        # Arithmetics
-        self.assertEqual(g, g)
-        assert_array_equal((3 * g)[FW].data, 3 * g[FW].data)
-        assert_array_equal((g * 3)[FW].data, 3 * g[FW].data)
-        assert_array_equal((-g)[FW].data, -g[FW].data)
-        assert_array_equal((g + g)[FW].data, 2 * g[FW].data)
-        assert_array_equal((g - g)[FW].data, 0 * g[FW].data)
-
-        # from_retime()
-        eps_t = Gf(mesh=t_mesh, target_shape=())
-        eps_t_m = Gf(mesh=t_mesh, target_shape=(3, 2))
-        for t in t_mesh:
-            eps_t[t] = np.cos(t.value)
-            eps_t_m[t] = np.array([[1, 2], [3, 4], [5, 6]]) * np.cos(t.value)
-
-        g = Singular2PKeldyshGF.from_retime(eps_t)
-        self.assertEqual(g.arg_index_shapes, ((), ()))
-        assert_array_equal(g.components[0].data, eps_t.data)
-        assert_array_equal(g.components[1].data, eps_t.data)
-
-        g_m1 = Singular2PKeldyshGF.from_retime(eps_t_m)
-        self.assertEqual(g_m1.arg_index_shapes, ((3,), (2,)))
-        assert_array_equal(g_m1.components[0].data, eps_t_m.data)
-        assert_array_equal(g_m1.components[1].data, eps_t_m.data)
-
-        g_m2 = Singular2PKeldyshGF.from_retime(eps_t_m, n_left_target_axes=2)
-        self.assertEqual(g_m2.arg_index_shapes, ((3, 2), ()))
-        assert_array_equal(g_m2.components[0].data, eps_t_m.data)
-        assert_array_equal(g_m2.components[1].data, eps_t_m.data)
-
-    def test_singular_2p_keldysh_gf_bz(self):
-        n_k = 10
-        t_mesh = MeshReTime(0, 6.0, 7)
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
-        mesh = MeshProduct(t_mesh, bz_mesh)
-
-        g = Singular2PKeldyshGF(mesh=mesh, arg_index_shapes=((3,), (4,)))
-
-        self.assertEqual(g.mesh, mesh)
-        self.assertEqual(g.time_mesh, MeshProduct(t_mesh))
-        self.assertEqual(g.non_time_mesh, MeshProduct(bz_mesh))
-        self.assertEqual(g.components.shape, (2,))
-
-        t0, t1 = list(t_mesh)[:2]
-
-        # __getitem__()
-        g.components[1].data[:] = 2.0
-        assert_array_equal(g[Branch.BACKWARD].data,
-                           2.0 * np.ones((7, n_k, 3, 4)))
-        g.components[1].data[0, :] = 3.0
-        assert_array_equal(g[CP(Branch.BACKWARD, t0)].data,
-                           3.0 * np.ones((n_k, 3, 4)))
-        assert_array_equal(g[CP(Branch.BACKWARD, t1)].data,
-                           2.0 * np.ones((n_k, 3, 4)))
-
-        # __setitem__()
-        g[Branch.FORWARD].data[:] = 4.0
-        assert_array_equal(g.components[0].data, 4.0 * np.ones((7, n_k, 3, 4)))
-        g[CP(Branch.FORWARD, t0)].data[:] = 5.0
-        assert_array_equal(g.components[0].data[0, :],
-                           5.0 * np.ones((n_k, 3, 4)))
-        assert_array_equal(g.components[0].data[1, :],
-                           4.0 * np.ones((n_k, 3, 4)))
-
-        for i, k in enumerate(bz_mesh):
-            # __getitem__()
-            g.components[1].data[:, i] = i
-            assert_array_equal(g[Branch.BACKWARD, t0, k],
-                               i * np.ones((3, 4)))
-            # __setitem__()
-            g[Branch.BACKWARD, t0, k] = i
-            assert_array_equal(g.components[1].data[0, i, :],
-                               i * np.ones((3, 4)))
-
-        # Arithmetics
-        self.assertEqual(g, g)
-        assert_array_equal((3 * g)[FW].data, 3 * g[FW].data)
-        assert_array_equal((g * 3)[FW].data, 3 * g[FW].data)
-        assert_array_equal((-g)[FW].data, -g[FW].data)
-        assert_array_equal((g + g)[FW].data, 2 * g[FW].data)
-        assert_array_equal((g - g)[FW].data, 0 * g[FW].data)
-
-        # from_retime()
-        eps_t = Gf(mesh=mesh, target_shape=())
-        eps_t_m = Gf(mesh=mesh, target_shape=(2, 1))
-        for t, k in mesh:
-            eps_t[t, k] = k[0] * np.cos(t.value)
-            eps_t_m[t] = k[0] * np.array([[1], [2]]) * np.cos(t.value)
-
-        g = Singular2PKeldyshGF.from_retime(eps_t)
-        self.assertEqual(g.arg_index_shapes, ((), ()))
-        assert_array_equal(g.components[0].data, eps_t.data)
-        assert_array_equal(g.components[1].data, eps_t.data)
-
-        g_m1 = Singular2PKeldyshGF.from_retime(eps_t_m)
-        self.assertEqual(g_m1.arg_index_shapes, ((2,), (1,)))
-        assert_array_equal(g_m1.components[0].data, eps_t_m.data)
-        assert_array_equal(g_m1.components[1].data, eps_t_m.data)
-
-        g_m2 = Singular2PKeldyshGF.from_retime(eps_t_m, n_left_target_axes=2)
-        self.assertEqual(g_m2.arg_index_shapes, ((2, 1), ()))
-        assert_array_equal(g_m2.components[0].data, eps_t_m.data)
-        assert_array_equal(g_m2.components[1].data, eps_t_m.data)
-
     def test_keldysh_vertex3(self):
         t_mesh1 = MeshReTime(0, 6.0, 7)
         t_mesh2 = MeshReTime(0, 6.0, 8)
@@ -958,6 +833,248 @@ class test_keldysh(unittest.TestCase):
 
         # Unary minus
         self.assertEqual((-Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)], -6.0)
+
+
+class TestSingular2PKeldyshGF(unittest.TestCase):
+    """Singular 2-point Green's function"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.t_max = 10.0
+        cls.n_t = 7
+        cls.t_mesh = MeshReTime(0.0, cls.t_max, cls.n_t)
+
+        cls.bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
+
+        cls.n_k = [4, 3]
+        cls.bz_meshes = [
+            MeshBrillouinZone(BrillouinZone(cls.bl), n_k) for n_k in cls.n_k
+        ]
+
+    def test_basic(self):
+        g = Singular2PKeldyshGF(mesh=self.t_mesh, arg_index_shapes=((3,), (4,)))
+
+        self.assertEqual(g.mesh, MeshProduct(self.t_mesh))
+        self.assertEqual(g.time_mesh, self.t_mesh)
+        self.assertEqual(g.non_time_mesh, MeshProduct())
+        self.assertEqual(g.components.shape, (2,))
+
+        t0, t1 = list(self.t_mesh)[:2]
+
+        # __getitem__()
+        g.components[1].data[:] = 2.0
+        assert_array_equal(g[Branch.BACKWARD].data, 2.0 * np.ones((7, 3, 4)))
+        g.components[1].data[0, :] = 3.0
+        assert_array_equal(g[CP(Branch.BACKWARD, t0)], 3.0 * np.ones((3, 4)))
+        assert_array_equal(g[CP(Branch.BACKWARD, t1)], 2.0 * np.ones((3, 4)))
+
+        # __setitem__()
+        g[Branch.FORWARD].data[:] = 4.0
+        assert_array_equal(g.components[0].data, 4.0 * np.ones((7, 3, 4)))
+        g[CP(Branch.FORWARD, t0)] = 5.0
+        assert_array_equal(g.components[0].data[0, :], 5.0 * np.ones((3, 4)))
+        assert_array_equal(g.components[0].data[1, :], 4.0 * np.ones((3, 4)))
+
+        # Arithmetics
+        self.assertEqual(g, g)
+        assert_array_equal((3 * g)[FW].data, 3 * g[FW].data)
+        assert_array_equal((g * 3)[FW].data, 3 * g[FW].data)
+        assert_array_equal((-g)[FW].data, -g[FW].data)
+        assert_array_equal((g + g)[FW].data, 2 * g[FW].data)
+        assert_array_equal((g - g)[FW].data, 0 * g[FW].data)
+
+        # from_retime()
+        eps_t = Gf(mesh=self.t_mesh, target_shape=())
+        eps_t_m = Gf(mesh=self.t_mesh, target_shape=(3, 2))
+        for t in self.t_mesh:
+            eps_t[t] = np.cos(t.value)
+            eps_t_m[t] = np.array([[1, 2], [3, 4], [5, 6]]) * np.cos(t.value)
+
+        g = Singular2PKeldyshGF.from_retime(eps_t)
+        self.assertEqual(g.arg_index_shapes, ((), ()))
+        assert_array_equal(g.components[0].data, eps_t.data)
+        assert_array_equal(g.components[1].data, eps_t.data)
+
+        g_m1 = Singular2PKeldyshGF.from_retime(eps_t_m)
+        self.assertEqual(g_m1.arg_index_shapes, ((3,), (2,)))
+        assert_array_equal(g_m1.components[0].data, eps_t_m.data)
+        assert_array_equal(g_m1.components[1].data, eps_t_m.data)
+
+        g_m2 = Singular2PKeldyshGF.from_retime(eps_t_m, n_left_target_axes=2)
+        self.assertEqual(g_m2.arg_index_shapes, ((3, 2), ()))
+        assert_array_equal(g_m2.components[0].data, eps_t_m.data)
+        assert_array_equal(g_m2.components[1].data, eps_t_m.data)
+
+    def test_basic_bz(self):
+        mesh = MeshProduct(self.t_mesh, self.bz_meshes[0])
+        g = Singular2PKeldyshGF(mesh=mesh, arg_index_shapes=((3,), (4,)))
+
+        self.assertEqual(g.mesh, mesh)
+        self.assertEqual(g.time_mesh, self.t_mesh)
+        self.assertEqual(g.non_time_mesh, MeshProduct(self.bz_meshes[0]))
+        self.assertEqual(g.components.shape, (2,))
+
+        t0, t1 = list(self.t_mesh)[:2]
+
+        # __getitem__()
+        g.components[1].data[:] = 2.0
+        assert_array_equal(g[Branch.BACKWARD].data,
+                           2.0 * np.ones((7, self.n_k[0], 3, 4)))
+        g.components[1].data[0, :] = 3.0
+        assert_array_equal(g[CP(Branch.BACKWARD, t0)].data,
+                           3.0 * np.ones((self.n_k[0], 3, 4)))
+        assert_array_equal(g[CP(Branch.BACKWARD, t1)].data,
+                           2.0 * np.ones((self.n_k[0], 3, 4)))
+
+        # __setitem__()
+        g[Branch.FORWARD].data[:] = 4.0
+        assert_array_equal(g.components[0].data,
+                           4.0 * np.ones((7, self.n_k[0], 3, 4)))
+        g[CP(Branch.FORWARD, t0)].data[:] = 5.0
+        assert_array_equal(g.components[0].data[0, :],
+                           5.0 * np.ones((self.n_k[0], 3, 4)))
+        assert_array_equal(g.components[0].data[1, :],
+                           4.0 * np.ones((self.n_k[0], 3, 4)))
+
+        for i, k in enumerate(self.bz_meshes[0]):
+            # __getitem__()
+            g.components[1].data[:, i] = i
+            assert_array_equal(g[Branch.BACKWARD, t0, k],
+                               i * np.ones((3, 4)))
+            # __setitem__()
+            g[Branch.BACKWARD, t0, k] = i
+            assert_array_equal(g.components[1].data[0, i, :],
+                               i * np.ones((3, 4)))
+
+        # Arithmetics
+        self.assertEqual(g, g)
+        assert_array_equal((3 * g)[FW].data, 3 * g[FW].data)
+        assert_array_equal((g * 3)[FW].data, 3 * g[FW].data)
+        assert_array_equal((-g)[FW].data, -g[FW].data)
+        assert_array_equal((g + g)[FW].data, 2 * g[FW].data)
+        assert_array_equal((g - g)[FW].data, 0 * g[FW].data)
+
+        # from_retime()
+        eps_t = Gf(mesh=mesh, target_shape=())
+        eps_t_m = Gf(mesh=mesh, target_shape=(2, 1))
+        for t, k in mesh:
+            eps_t[t, k] = k[0] * np.cos(t.value)
+            eps_t_m[t] = k[0] * np.array([[1], [2]]) * np.cos(t.value)
+
+        g = Singular2PKeldyshGF.from_retime(eps_t)
+        self.assertEqual(g.arg_index_shapes, ((), ()))
+        assert_array_equal(g.components[0].data, eps_t.data)
+        assert_array_equal(g.components[1].data, eps_t.data)
+
+        g_m1 = Singular2PKeldyshGF.from_retime(eps_t_m)
+        self.assertEqual(g_m1.arg_index_shapes, ((2,), (1,)))
+        assert_array_equal(g_m1.components[0].data, eps_t_m.data)
+        assert_array_equal(g_m1.components[1].data, eps_t_m.data)
+
+        g_m2 = Singular2PKeldyshGF.from_retime(eps_t_m, n_left_target_axes=2)
+        self.assertEqual(g_m2.arg_index_shapes, ((2, 1), ()))
+        assert_array_equal(g_m2.components[0].data, eps_t_m.data)
+        assert_array_equal(g_m2.components[1].data, eps_t_m.data)
+
+    @classmethod
+    def _test_conv(self, eps_t1, eps_t2, eps_t12_ref):
+        sg1 = Singular2PKeldyshGF.from_retime(eps_t1)
+        sg2 = Singular2PKeldyshGF.from_retime(eps_t2)
+
+        sg1sg2 = sg1 @ sg2
+
+        sg1sg2_ref = Singular2PKeldyshGF.from_retime(eps_t12_ref)
+        assert_singular_2p_keldysh_gf_almost_equal(sg1sg2, sg1sg2_ref, 1e-10)
+
+    def test_convolution_scalar(self):
+        eps_t1 = Gf(mesh=self.t_mesh, target_shape=())
+        eps_t2 = Gf(mesh=self.t_mesh, target_shape=())
+        eps_t12_ref = Gf(mesh=MeshProduct(self.t_mesh), target_shape=())
+        for t in self.t_mesh:
+            eps_t1[t] = np.cos(t.value)
+            eps_t2[t] = np.cos(2 * t.value)
+            eps_t12_ref[t] = np.cos(t.value) * np.cos(2 * t.value)
+        self._test_conv(eps_t1, eps_t2, eps_t12_ref)
+
+    def test_convolution_matrix(self):
+        eps_t1 = Gf(mesh=self.t_mesh, target_shape=(2, 4))
+        eps_t2 = Gf(mesh=self.t_mesh, target_shape=(4, 1))
+        eps_t12_ref = Gf(mesh=MeshProduct(self.t_mesh), target_shape=(2, 1))
+        for t, (m, n) in product(self.t_mesh, np.ndindex((2, 4))):
+            eps_t1[t][m, n] = (m + 1) * (n + 1) * np.cos(t.value)
+        for t, (m, n) in product(self.t_mesh, np.ndindex((4, 1))):
+            eps_t2[t][m, n] = (m + 1) * (n + 1) * np.cos(2 * t.value)
+        for t, (m, n) in product(self.t_mesh, np.ndindex((2, 1))):
+            eps_t12_ref[t][m, n] = (m + 1) * 30 * (n + 1) * \
+                np.cos(t.value) * np.cos(2 * t.value)
+        self._test_conv(eps_t1, eps_t2, eps_t12_ref)
+
+    def test_convolution_scalar_bz(self):
+        mesh = MeshProduct(self.t_mesh, self.bz_meshes[0])
+        eps_t1 = Gf(mesh=mesh, target_shape=())
+        eps_t2 = Gf(mesh=mesh, target_shape=())
+        eps_t12_ref = Gf(mesh=mesh, target_shape=())
+        for t, k in mesh:
+            eps_t1[t, k] = k[0] * np.cos(t.value)
+            eps_t2[t, k] = k[0] * np.cos(2 * t.value)
+            eps_t12_ref[t, k] = k[0]**2 * np.cos(t.value) * np.cos(2 * t.value)
+        self._test_conv(eps_t1, eps_t2, eps_t12_ref)
+
+    def test_convolution_matrix_bz(self):
+        mesh = MeshProduct(self.t_mesh, self.bz_meshes[0])
+        eps_t1 = Gf(mesh=mesh, target_shape=(2, 4))
+        eps_t2 = Gf(mesh=mesh, target_shape=(4, 1))
+        eps_t12_ref = Gf(mesh=mesh, target_shape=(2, 1))
+        for t, k in mesh:
+            for m, n in np.ndindex((2, 4)):
+                eps_t1[t, k][m, n] = \
+                    (m + 1) * (n + 1) * k[0] * np.cos(t.value)
+            for m, n in np.ndindex((4, 1)):
+                eps_t2[t, k][m, n] = \
+                    (m + 1) * (n + 1) * k[0] * np.cos(2 * t.value)
+            for m, n in np.ndindex((2, 1)):
+                eps_t12_ref[t, k][m, n] = \
+                    (m + 1) * 30 * (n + 1) * k[0]**2 * \
+                    np.cos(t.value) * np.cos(2 * t.value)
+        self._test_conv(eps_t1, eps_t2, eps_t12_ref)
+
+    def test_convolution_scalar_bz1_bz2(self):
+        tk_meshes = [MeshProduct(self.t_mesh, bz_mesh)
+                     for bz_mesh in self.bz_meshes]
+        tk1k2_mesh = MeshProduct(self.t_mesh, *self.bz_meshes)
+        eps_t1 = Gf(mesh=tk_meshes[0], target_shape=())
+        eps_t2 = Gf(mesh=tk_meshes[1], target_shape=())
+        eps_t12_ref = Gf(mesh=tk1k2_mesh, target_shape=())
+        for t, k in tk_meshes[0]:
+            eps_t1[t, k] = k[0] * np.cos(t.value)
+        for t, k in tk_meshes[1]:
+            eps_t2[t, k] = k[0] * np.cos(2 * t.value)
+        for t, k1, k2 in tk1k2_mesh:
+            eps_t12_ref[t, k1, k2] = \
+                k1[0] * k2[0] * np.cos(t.value) * np.cos(2 * t.value)
+        self._test_conv(eps_t1, eps_t2, eps_t12_ref)
+
+    def test_convolution_matrix_bz1_bz2(self):
+        tk_meshes = [MeshProduct(self.t_mesh, bz_mesh)
+                     for bz_mesh in self.bz_meshes]
+        tk1k2_mesh = MeshProduct(self.t_mesh, *self.bz_meshes)
+        eps_t1 = Gf(mesh=tk_meshes[0], target_shape=(2, 4))
+        eps_t2 = Gf(mesh=tk_meshes[1], target_shape=(4, 1))
+        eps_t12_ref = Gf(mesh=tk1k2_mesh, target_shape=(2, 1))
+
+        for t, k in tk_meshes[0]:
+            for m, n in np.ndindex((2, 4)):
+                eps_t1[t, k][m, n] = (m + 1) * (n + 1) * k[0] * np.cos(t.value)
+        for t, k in tk_meshes[1]:
+            for m, n in np.ndindex((4, 1)):
+                eps_t2[t, k][m, n] = \
+                    (m + 1) * (n + 1) * k[0] * np.cos(2 * t.value)
+        for t, k1, k2 in tk1k2_mesh:
+            for m, n in np.ndindex((2, 1)):
+                eps_t12_ref[t, k1, k2][m, n] = \
+                    (m + 1) * 30 * (n + 1) * k1[0] * k2[0] \
+                    * np.cos(t.value) * np.cos(2 * t.value)
+        self._test_conv(eps_t1, eps_t2, eps_t12_ref)
 
 
 if __name__ == '__main__':

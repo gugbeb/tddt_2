@@ -6,7 +6,9 @@ import numpy as np
 
 from triqs.gf import Gf, MeshReTime, MeshProduct
 
-from .util import subscripts
+from .util import (subscripts,
+                   make_conv_res_nontime_mesh,
+                   make_conv_nontime_einsum_subscripts)
 from .integration import GregoryIntegrator
 
 
@@ -63,32 +65,6 @@ def conj(g: Gf, *, n_left_indices=None) -> Gf:
     return g_conj
 
 
-def _make_nontime_mesh_and_subs(a_mesh, b_mesh):
-    nt_mesh_a = a_mesh.components[2:]
-    nt_mesh_b = b_mesh.components[2:]
-
-    nts = subscripts['nontime']
-    if nt_mesh_a == nt_mesh_b:
-        # If the non-time components of the meshes agree, then we
-        # use the same non-time mesh for the result
-        ss = nts[:len(nt_mesh_a)]
-        subs_a_nt = ss
-        subs_b_nt = ss
-        subs_res_nt = ss
-        mesh_comps_res = nt_mesh_a
-    else:
-        # Otherwise the result is defined on a direct product of the meshes.
-        ss = nts[:len(nt_mesh_a)]
-        subs_a_nt = ss
-        subs_res_nt = ss
-        ss = nts[len(nt_mesh_a):len(nt_mesh_a) + len(nt_mesh_b)]
-        subs_b_nt = ss
-        subs_res_nt += ss
-        mesh_comps_res = nt_mesh_a + nt_mesh_b
-
-    return subs_a_nt, subs_b_nt, subs_res_nt, mesh_comps_res
-
-
 def _make_target_shape_subs(a_nli, a_nri, b_nli, b_nri):
     tgs = subscripts['target']
     subs_a_tg = tgs[:a_nli + a_nri]
@@ -129,8 +105,14 @@ def conv_ret_ret(a_ret: Gf,
     t_mesh = a_ret.mesh.components[0]
 
     # Handle the non-time components of the meshes
-    subs_a_ret_nt, subs_b_ret_nt, subs_res_nt, nt_mesh_comps_res = \
-        _make_nontime_mesh_and_subs(a_ret.mesh, b_ret.mesh)
+    a_ret_nt_mesh_comps = a_ret.mesh.components[2:]
+    b_ret_nt_mesh_comps = b_ret.mesh.components[2:]
+
+    nt_mesh_comps_res = make_conv_res_nontime_mesh(a_ret_nt_mesh_comps,
+                                                   b_ret_nt_mesh_comps)
+    subs_a_ret_nt, subs_b_ret_nt, subs_res_nt = \
+        make_conv_nontime_einsum_subscripts(a_ret_nt_mesh_comps,
+                                            b_ret_nt_mesh_comps)
 
     mesh = MeshProduct(t_mesh, t_mesh, *nt_mesh_comps_res)
 
@@ -246,8 +228,14 @@ def conv_ret_lg(a_ret: Gf,
     t_mesh_comps_res = [a_ret.mesh.components[0], b_lg.mesh.components[1]]
 
     # Handle the non-time components of the meshes
-    subs_a_ret_nt, subs_b_lg_nt, subs_res_nt, nt_mesh_comps_res = \
-        _make_nontime_mesh_and_subs(a_ret.mesh, b_lg.mesh)
+    a_ret_nt_mesh_comps = a_ret.mesh.components[2:]
+    b_lg_nt_mesh_comps = b_lg.mesh.components[2:]
+
+    nt_mesh_comps_res = make_conv_res_nontime_mesh(a_ret_nt_mesh_comps,
+                                                   b_lg_nt_mesh_comps)
+    subs_a_ret_nt, subs_b_lg_nt, subs_res_nt = \
+        make_conv_nontime_einsum_subscripts(a_ret_nt_mesh_comps,
+                                            b_lg_nt_mesh_comps)
 
     mesh = MeshProduct(*t_mesh_comps_res, *nt_mesh_comps_res)
 
@@ -326,8 +314,14 @@ def conv_lg_adv(a_lg: Gf,
     t_mesh_comps_res = [a_lg.mesh.components[0], b_adv.mesh.components[1]]
 
     # Handle the non-time components of the meshes
-    subs_a_lg_nt, subs_b_adv_nt, subs_res_nt, nt_mesh_comps_res = \
-        _make_nontime_mesh_and_subs(a_lg.mesh, b_adv.mesh)
+    a_lg_nt_mesh_comps = a_lg.mesh.components[2:]
+    b_adv_nt_mesh_comps = b_adv.mesh.components[2:]
+
+    nt_mesh_comps_res = make_conv_res_nontime_mesh(a_lg_nt_mesh_comps,
+                                                   b_adv_nt_mesh_comps)
+    subs_a_lg_nt, subs_b_adv_nt, subs_res_nt = \
+        make_conv_nontime_einsum_subscripts(a_lg_nt_mesh_comps,
+                                            b_adv_nt_mesh_comps)
 
     mesh = MeshProduct(*t_mesh_comps_res, *nt_mesh_comps_res)
 
