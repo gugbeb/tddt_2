@@ -10,7 +10,7 @@ from tddt.integration import (simpsons_weights,
                               GregoryIntegrator)
 
 
-class test_integration(unittest.TestCase):
+class TestIntegration(unittest.TestCase):
     """Integration tools"""
 
     mesh = MeshReTime(1.0, 3.4, 13)

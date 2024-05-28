@@ -23,7 +23,7 @@ from tddt.realevol import (
 from tddt.testing import assert_keldysh_gf_almost_equal
 
 
-class test_realevol(unittest.TestCase):
+class TestRealevol(unittest.TestCase):
     """Convenience wrapper functions around realevol"""
 
     @classmethod

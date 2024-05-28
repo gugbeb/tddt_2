@@ -11,7 +11,7 @@ from tddt.keldysh import KeldyshGF
 from tddt.integration import GregoryIntegrator
 
 
-class test_retime(unittest.TestCase):
+class TestRetime(unittest.TestCase):
     """Auxiliary routines for Green's functions of real time"""
 
     @classmethod

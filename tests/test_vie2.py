@@ -13,7 +13,7 @@ from tddt.vie2 import VIE2Solver, solve_vie2
 from tddt.testing import assert_keldysh_gf_almost_equal
 
 
-class test_vie2(unittest.TestCase):
+class TestVIE2(unittest.TestCase):
     """Volterra integral equations of the 2nd kind"""
 
     def test_VIE2Solver_scalar(self):

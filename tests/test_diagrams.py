@@ -15,7 +15,7 @@ from tddt.testing import assert_keldysh_gf_almost_equal
 FW, BW = Branch.FORWARD, Branch.BACKWARD
 
 
-class test_diagrams(unittest.TestCase):
+class TestDiagrams(unittest.TestCase):
     """Diagrams on Keldysh contour"""
 
     @classmethod
