@@ -494,6 +494,30 @@ class TestKeldyshGF(unittest.TestCase):
         assert_gfs_are_close(g.lesser(), -conj(g_hc.lesser()))
         assert_gfs_are_close(g.retarded(), conj(g_hc.advanced()))
 
+        # Tensor-valued GF with an extra k-mesh component
+        n_k = 4
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
+
+        g_l = Gf(mesh=mesh, target_shape=(2, 3, 4))
+        g_g = Gf(mesh=mesh, target_shape=(2, 3, 4))
+        for k in bz_mesh:
+            eps = np.sum(k.value)
+            ten = np.arange(2 * 3 * 4).reshape((2, 3, 4))
+            for t1, t2 in MeshProduct(t_mesh, t_mesh):
+                e = np.exp(-1j * (t1.value - t2.value))
+                g_g[t1, t2, k] = -1j * (1.0 - 0.1) * ten * e
+                g_l[t1, t2, k] = -1j * -0.1 * ten * e
+        g = KeldyshGF.from_lesser_greater(g_l, g_g, n_left_target_axes=1)
+        self.assertFalse(g.is_hermitian())
+        g_hc = herm_conj(g)
+        assert_gfs_are_close(g.greater(),
+                             -conj(g_hc.greater(), n_left_indices=2))
+        assert_gfs_are_close(g.lesser(),
+                             -conj(g_hc.lesser(), n_left_indices=2))
+        assert_gfs_are_close(g.retarded(),
+                             conj(g_hc.advanced(), n_left_indices=2))
+
     def _single_state_g_l(self, occ, eps, dt):
         return (-1j * (1 - occ) * np.exp(-1j * eps * dt),
                 -1j * (-occ) * np.exp(-1j * eps * dt))

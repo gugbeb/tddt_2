@@ -793,10 +793,11 @@ def herm_conj(g: KeldyshGF) -> KeldyshGF:
     g_conj_g = Gf(mesh=mesh_conj, target_shape=target_shape_conj)
     g_conj_l = Gf(mesh=mesh_conj, target_shape=target_shape_conj)
 
-    nli, nri = len(g.arg_index_shapes[0]), len(g.arg_index_shapes[1])
+    nli, nri = map(len, g.arg_index_shapes)
 
-    axes_from = (0, 1, *range(-1, - nli - 1, -1))
-    axes_to = (1, 0, *range(-1 - nli, -2 * nli - 1, -1))
+    axes_from = (0, 1, *range(-1, - nli - nri - 1, -1))
+    axes_to = (1, 0, *range(-nli - 1, - nli - nri - 1, -1),
+                     *range(-1, - nli - 1, -1))
     g_conj_g.data[:] = -np.conj(np.moveaxis(g_g.data, axes_from, axes_to))
     g_conj_l.data[:] = -np.conj(np.moveaxis(g_l.data, axes_from, axes_to))
 
