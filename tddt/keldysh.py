@@ -388,11 +388,15 @@ class KeldyshGF(ComponentwiseArithmetics):
         the first argument of 'other'.
         """
 
-        # General case
+        # First of all, check if 'other' is a singular 2-point GF
+        if isinstance(other, Singular2PKeldyshGF):
+            return conv(self, other, [(-1, 0)])
+
+        # General case of a regular 'other'
         if not (self.n_args == 2 and other.n_args == 2):
             return conv(self, other, [(-1, 0)])
 
-        # High-accuracy approach for a convolution of two 2-point GFs
+        # High-accuracy approach for a convolution of two regular 2-point GFs
 
         self_l = self.lesser()
         self_g = self.greater()
@@ -410,6 +414,17 @@ class KeldyshGF(ComponentwiseArithmetics):
             conv_g,
             n_left_target_axes=len(self.arg_index_shapes[0])
         )
+
+    def __rmatmul__(self, other):
+        r"""
+        Contour convolution over the second argument of 'other' and
+        the first argument of 'self'. 'other' is expected to be
+        a Singular2PKeldyshGF.
+        """
+        if isinstance(other, Singular2PKeldyshGF):
+            return conv(other, self, [(-1, 0)])
+        else:
+            return NotImplemented
 
     #
     # Functions specific to the 2-point GFs
@@ -527,6 +542,9 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
     proportional to a contour delta-function \delta_C(t, t').
     """
 
+    """Integrator object for contour convolutions"""
+    integrator = GregoryIntegrator(5)
+
     def __init__(
             self, *,
             mesh: Union[MeshReTime, MeshProduct],
@@ -542,6 +560,7 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
             self.mesh = MeshProduct(mesh)
             self.time_mesh = mesh
             self.non_time_mesh = MeshProduct()
+            self.n_args = 2
 
         elif isinstance(mesh, MeshProduct):
             assert len(mesh.components) >= 1 and \
@@ -551,6 +570,7 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
             self.mesh = mesh
             self.time_mesh = mesh.components[0]
             self.non_time_mesh = MeshProduct(*mesh.components[1:])
+            self.n_args = 2
 
         else:
             raise TypeError(f"Unsupported mesh type {type(mesh)}")
@@ -806,8 +826,8 @@ def herm_conj(g: KeldyshGF) -> KeldyshGF:
                                          n_left_target_axes=nri)
 
 
-def conv(a: KeldyshGF,  # noqa: C901
-         b: KeldyshGF,
+def conv(a: Union[KeldyshGF, Singular2PKeldyshGF],  # noqa: C901
+         b: Union[KeldyshGF, Singular2PKeldyshGF],
          coupled_args: Sequence[Tuple[int, int]] = [],
          *,
          free_args: Optional[Tuple[Sequence[int], Sequence[int]]] = None,
@@ -815,7 +835,8 @@ def conv(a: KeldyshGF,  # noqa: C901
     r"""
     Compute a contour convolution and a sum over its corresponding target
     indices of two contour function 'a' and 'b' w.r.t. one or more pairs
-    of arguments.
+    of arguments. Either 'a' or 'b' can be an instance of Singular2PKeldyshGF,
+    but not both at once.
 
     a: First function in the convolution.
     b: Second function in the convolution.
@@ -839,15 +860,27 @@ def conv(a: KeldyshGF,  # noqa: C901
     for arg_a, arg_b in coupled_args:
         assert -a.n_args <= arg_a < a.n_args, \
             f"Wrong argument number {arg_a} for the first function with " \
-            "{a.n_args} arguments"
+            f"{a.n_args} arguments"
         assert -b.n_args <= arg_b < b.n_args, \
             f"Wrong argument number {arg_b} for the second function with " \
-            "{b.n_args} arguments"
+            f"{b.n_args} arguments"
         conv_args.append((arg_a if arg_a >= 0 else a.n_args + arg_a,
                           arg_b if arg_b >= 0 else b.n_args + arg_b))
 
     conv_args = sorted(list(set(conv_args)))
     n_conv_args = len(conv_args)
+
+    a_is_s2p = isinstance(a, Singular2PKeldyshGF)
+    b_is_s2p = isinstance(b, Singular2PKeldyshGF)
+    has_singular = a_is_s2p or b_is_s2p
+
+    if has_singular:
+        assert len(conv_args) >= 1, \
+            "When either of the functions is Singular2PKeldyshGF, " \
+            "coupled_args must contain at least one pair"
+
+    assert not (a_is_s2p and b_is_s2p), \
+        "The case of both functions being Singular2PKeldyshGF is not supported"
 
     n_args_res = a.n_args + b.n_args - 2 * n_conv_args
     assert n_args_res >= 0
@@ -910,8 +943,8 @@ def conv(a: KeldyshGF,  # noqa: C901
     # Check mesh compatibility and compute integration weights
     w = []
     for arg_a, arg_b in conv_args:
-        t_mesh_a = a.time_mesh.components[arg_a]
-        t_mesh_b = b.time_mesh.components[arg_b]
+        t_mesh_a = a.time_mesh if a_is_s2p else a.time_mesh.components[arg_a]
+        t_mesh_b = b.time_mesh if b_is_s2p else b.time_mesh.components[arg_b]
         assert t_mesh_a == t_mesh_b, \
             f"Incompatible time mesh components {t_mesh_a} and {t_mesh_b} for" \
             f" the coupled argument pair ({arg_a}, {arg_b})"
@@ -919,18 +952,26 @@ def conv(a: KeldyshGF,  # noqa: C901
             f"Time mesh of a's argument {arg_a} must have " \
             f"at least {min_t_mesh_size} nodes"
 
-        w.append(a.integrator.weights_conv(t_mesh_a))
+        # If one of the multipliers is singular, there is one less weight
+        # arrays to be used
+        if not (has_singular and len(w) == len(conv_args) - 1):
+            w.append(a.integrator.weights_conv(t_mesh_a))
 
     # Gather components of the resulting mesh
     mesh_comps_res = [None] * n_args_res
     for arg_a, arg_res in enumerate(arg_indices_a):
         if arg_res < n_args_res:
-            mesh_comps_res[arg_res] = a.time_mesh.components[arg_a]
+            mesh_comps_res[arg_res] = a.time_mesh if a_is_s2p \
+                else a.time_mesh.components[arg_a]
     for arg_b, arg_res in enumerate(arg_indices_b):
         if arg_res < n_args_res:
-            mesh_comps_res[arg_res] = b.time_mesh.components[arg_b]
+            mesh_comps_res[arg_res] = b.time_mesh if b_is_s2p \
+                else b.time_mesh.components[arg_b]
 
-    # Generate einsum() subscripts
+    #
+    # Handle the time components of the meshes
+    #
+
     ts = subscripts['time']
     subs_a_t = ''.join([ts[i] for i in arg_indices_a])
     subs_b_t = ''.join([ts[i] for i in arg_indices_b])
@@ -983,6 +1024,27 @@ def conv(a: KeldyshGF,  # noqa: C901
     subs_res_tg = ''.join(tgs[:n_args_res])
 
     #
+    # Update subscripts for singular functions
+    #
+
+    if a_is_s2p:
+        last_t_sub = subs_w[-1]
+        del subs_w[-1]
+        subs_a_t = ''.join([s for s in subs_a_t if s != last_t_sub])
+        subs_b_t = ''.join([(subs_a_t[0] if s == last_t_sub else s)
+                            for s in subs_b_t])
+        subs_res_t = ''.join([(subs_a_t[0] if s == last_t_sub else s)
+                              for s in subs_res_t])
+    if b_is_s2p:
+        last_t_sub = subs_w[-1]
+        del subs_w[-1]
+        subs_b_t = ''.join([s for s in subs_b_t if s != last_t_sub])
+        subs_a_t = ''.join([(subs_b_t[0] if s == last_t_sub else s)
+                            for s in subs_a_t])
+        subs_res_t = ''.join([(subs_b_t[0] if s == last_t_sub else s)
+                              for s in subs_res_t])
+
+    #
     # Perform summation
     #
 
@@ -990,16 +1052,35 @@ def conv(a: KeldyshGF,  # noqa: C901
     subs_b = subs_b_t + subs_b_nt + subs_b_tg
     subs_res = subs_res_t + subs_res_nt + subs_res_tg
 
-    subs = f"{subs_a}," + ','.join(subs_w) + f",{subs_b}->{subs_res}"
+    subs = f"{subs_a}," \
+           + (','.join(subs_w) + ',' if len(subs_w) > 0 else '') \
+           + f"{subs_b}->{subs_res}"
 
     res = KeldyshGF(mesh=MeshProduct(*mesh_comps_res),
                     arg_index_shapes=subshapes_res)
 
     for br in product(Branch, repeat=n_args_res + n_conv_args):
+        sign = 1
         br_a = tuple(br[i] for i in arg_indices_a)
+        # Only the branch-diagonal components of a singular 'a' contribute
+        if a_is_s2p:
+            if br_a[0] != br_a[1]:
+                continue
+            else:
+                br_a = br_a[0]
+                if br_a == Branch.BACKWARD:
+                    sign *= -1
         br_b = tuple(br[i] for i in arg_indices_b)
+        # Only the branch-diagonal components of a singular 'b' contribute
+        if b_is_s2p:
+            if br_b[0] != br_b[1]:
+                continue
+            else:
+                br_b = br_b[0]
+                if br_b == Branch.BACKWARD:
+                    sign *= -1
         br_res = tuple(br[:n_args_res])
-        sign = (-1) ** br[n_args_res:].count(Branch.BACKWARD)
+        sign *= (-1) ** br[n_args_res:].count(Branch.BACKWARD)
         res[br_res].data[:] += sign * np.einsum(subs,
                                                 a[br_a].data,
                                                 *w,

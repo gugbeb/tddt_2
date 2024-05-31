@@ -180,6 +180,11 @@ class TestContourPoint(unittest.TestCase):
             )
 
 
+def single_state_g_l(occ, eps, dt):
+    return (-1j * (1 - occ) * np.exp(-1j * eps * dt),
+            -1j * (-occ) * np.exp(-1j * eps * dt))
+
+
 class TestKeldyshGF(unittest.TestCase):
     """Keldysh Green's functions and vertices"""
 
@@ -518,10 +523,6 @@ class TestKeldyshGF(unittest.TestCase):
         assert_gfs_are_close(g.retarded(),
                              conj(g_hc.advanced(), n_left_indices=2))
 
-    def _single_state_g_l(self, occ, eps, dt):
-        return (-1j * (1 - occ) * np.exp(-1j * eps * dt),
-                -1j * (-occ) * np.exp(-1j * eps * dt))
-
     def _conv_g_l(self, occ1, occ2, eps1, eps2, t1, t2):
         dt = t1 - t2
         return (-1j / (eps1 - eps2) * (
@@ -536,7 +537,7 @@ class TestKeldyshGF(unittest.TestCase):
                 )
                 )
 
-    def test_convolution_scalar(self):
+    def test_conv_scalar(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -550,9 +551,9 @@ class TestKeldyshGF(unittest.TestCase):
         for i in range(2):
             for t1, t2 in tt_mesh:
                 dt = t1 - t2
-                g_g[i][t1, t2], g_l[i][t1, t2] = self._single_state_g_l(occ[i],
-                                                                        eps[i],
-                                                                        dt)
+                g_g[i][t1, t2], g_l[i][t1, t2] = single_state_g_l(occ[i],
+                                                                  eps[i],
+                                                                  dt)
         g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
         g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
@@ -571,7 +572,7 @@ class TestKeldyshGF(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_convolution_matrix(self):
+    def test_conv_matrix(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -587,7 +588,7 @@ class TestKeldyshGF(unittest.TestCase):
             for (m, n) in np.ndindex(shapes[i]):
                 for t1, t2 in tt_mesh:
                     dt = t1 - t2
-                    g_val, l_val = self._single_state_g_l(occ[i], eps[i], dt)
+                    g_val, l_val = single_state_g_l(occ[i], eps[i], dt)
                     g_l[i][t1, t2][m, n] = (m + 1) * (n + 1) * l_val
                     g_g[i][t1, t2][m, n] = (m + 1) * (n + 1) * g_val
         g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
@@ -611,7 +612,7 @@ class TestKeldyshGF(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_convolution_scalar_bz(self):
+    def test_conv_scalar_bz(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -632,11 +633,7 @@ class TestKeldyshGF(unittest.TestCase):
                 for t1, t2 in tt_mesh:
                     dt = t1 - t2
                     g_g[i][t1, t2, k], g_l[i][t1, t2, k] = \
-                        self._single_state_g_l(
-                        occ[i],
-                        eps,
-                        dt
-                    )
+                        single_state_g_l(occ[i], eps, dt)
         g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
         g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
@@ -656,7 +653,7 @@ class TestKeldyshGF(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_convolution_matrix_bz(self):
+    def test_conv_matrix_bz(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -678,7 +675,7 @@ class TestKeldyshGF(unittest.TestCase):
                 for k, eps in zip(bz_mesh, eps_k[i]):
                     for t1, t2 in tt_mesh:
                         dt = t1 - t2
-                        g_val, l_val = self._single_state_g_l(occ[i], eps, dt)
+                        g_val, l_val = single_state_g_l(occ[i], eps, dt)
                         g_l[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * l_val
                         g_g[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * g_val
 
@@ -702,7 +699,7 @@ class TestKeldyshGF(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_convolution_scalar_bz1_bz2(self):
+    def test_conv_scalar_bz1_bz2(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -727,11 +724,7 @@ class TestKeldyshGF(unittest.TestCase):
                 for t1, t2 in tt_mesh:
                     dt = t1 - t2
                     g_g[i][t1, t2, k], g_l[i][t1, t2, k] = \
-                        self._single_state_g_l(
-                        occ[i],
-                        eps,
-                        dt
-                    )
+                        single_state_g_l(occ[i], eps, dt)
         g1 = KeldyshGF.from_lesser_greater(g_l[0], g_g[0])
         g2 = KeldyshGF.from_lesser_greater(g_l[1], g_g[1])
 
@@ -751,7 +744,7 @@ class TestKeldyshGF(unittest.TestCase):
         g1g2_ref = KeldyshGF.from_lesser_greater(g1g2_ref_l, g1g2_ref_g)
         assert_keldysh_gf_almost_equal(g1g2, g1g2_ref, 1e-10)
 
-    def test_convolution_matrix_bz1_bz2(self):
+    def test_conv_matrix_bz1_bz2(self):
         t_max = 10.0
         n_t = 51
         t_mesh = MeshReTime(0.0, t_max, n_t)
@@ -777,7 +770,7 @@ class TestKeldyshGF(unittest.TestCase):
                 for (m, n) in np.ndindex(shapes[i]):
                     for t1, t2 in tt_mesh:
                         dt = t1 - t2
-                        g_val, l_val = self._single_state_g_l(occ[i], eps, dt)
+                        g_val, l_val = single_state_g_l(occ[i], eps, dt)
                         g_l[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * l_val
                         g_g[i][t1, t2, k][m, n] = (m + 1) * (n + 1) * g_val
 
@@ -1001,7 +994,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
         assert_array_equal(g_m2.components[1].data, eps_t_m.data)
 
     @classmethod
-    def _test_conv(self, eps_t1, eps_t2, eps_t12_ref):
+    def _test_conv(cls, eps_t1, eps_t2, eps_t12_ref):
         sg1 = Singular2PKeldyshGF.from_retime(eps_t1)
         sg2 = Singular2PKeldyshGF.from_retime(eps_t2)
 
@@ -1010,7 +1003,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
         sg1sg2_ref = Singular2PKeldyshGF.from_retime(eps_t12_ref)
         assert_singular_2p_keldysh_gf_almost_equal(sg1sg2, sg1sg2_ref, 1e-10)
 
-    def test_convolution_scalar(self):
+    def test_conv_scalar(self):
         eps_t1 = Gf(mesh=self.t_mesh, target_shape=())
         eps_t2 = Gf(mesh=self.t_mesh, target_shape=())
         eps_t12_ref = Gf(mesh=MeshProduct(self.t_mesh), target_shape=())
@@ -1020,7 +1013,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
             eps_t12_ref[t] = np.cos(t.value) * np.cos(2 * t.value)
         self._test_conv(eps_t1, eps_t2, eps_t12_ref)
 
-    def test_convolution_matrix(self):
+    def test_conv_matrix(self):
         eps_t1 = Gf(mesh=self.t_mesh, target_shape=(2, 4))
         eps_t2 = Gf(mesh=self.t_mesh, target_shape=(4, 1))
         eps_t12_ref = Gf(mesh=MeshProduct(self.t_mesh), target_shape=(2, 1))
@@ -1033,7 +1026,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
                 np.cos(t.value) * np.cos(2 * t.value)
         self._test_conv(eps_t1, eps_t2, eps_t12_ref)
 
-    def test_convolution_scalar_bz(self):
+    def test_conv_scalar_bz(self):
         mesh = MeshProduct(self.t_mesh, self.bz_meshes[0])
         eps_t1 = Gf(mesh=mesh, target_shape=())
         eps_t2 = Gf(mesh=mesh, target_shape=())
@@ -1044,7 +1037,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
             eps_t12_ref[t, k] = k[0]**2 * np.cos(t.value) * np.cos(2 * t.value)
         self._test_conv(eps_t1, eps_t2, eps_t12_ref)
 
-    def test_convolution_matrix_bz(self):
+    def test_conv_matrix_bz(self):
         mesh = MeshProduct(self.t_mesh, self.bz_meshes[0])
         eps_t1 = Gf(mesh=mesh, target_shape=(2, 4))
         eps_t2 = Gf(mesh=mesh, target_shape=(4, 1))
@@ -1062,7 +1055,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
                     np.cos(t.value) * np.cos(2 * t.value)
         self._test_conv(eps_t1, eps_t2, eps_t12_ref)
 
-    def test_convolution_scalar_bz1_bz2(self):
+    def test_conv_scalar_bz1_bz2(self):
         tk_meshes = [MeshProduct(self.t_mesh, bz_mesh)
                      for bz_mesh in self.bz_meshes]
         tk1k2_mesh = MeshProduct(self.t_mesh, *self.bz_meshes)
@@ -1078,7 +1071,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
                 k1[0] * k2[0] * np.cos(t.value) * np.cos(2 * t.value)
         self._test_conv(eps_t1, eps_t2, eps_t12_ref)
 
-    def test_convolution_matrix_bz1_bz2(self):
+    def test_conv_matrix_bz1_bz2(self):
         tk_meshes = [MeshProduct(self.t_mesh, bz_mesh)
                      for bz_mesh in self.bz_meshes]
         tk1k2_mesh = MeshProduct(self.t_mesh, *self.bz_meshes)
@@ -1099,6 +1092,201 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
                     (m + 1) * 30 * (n + 1) * k1[0] * k2[0] \
                     * np.cos(t.value) * np.cos(2 * t.value)
         self._test_conv(eps_t1, eps_t2, eps_t12_ref)
+
+    @classmethod
+    def _test_conv_reg_sing(cls, g, sg,
+                            g_sg_ref_l, g_sg_ref_g,
+                            sg_g_ref_l, sg_g_ref_g):
+        g_sg = g @ sg
+        sg_g = sg @ g
+
+        assert_gfs_are_close(g_sg.lesser(), g_sg_ref_l)
+        assert_gfs_are_close(g_sg.greater(), g_sg_ref_g)
+        assert_gfs_are_close(sg_g.lesser(), sg_g_ref_l)
+        assert_gfs_are_close(sg_g.greater(), sg_g_ref_g)
+
+    def test_conv_reg_sing_scalar(self):
+        sg = Singular2PKeldyshGF(mesh=self.t_mesh, arg_index_shapes=((), ()))
+        for t in self.t_mesh:
+            sg[FW][t] = np.cos(t.value)
+            sg[BW][t] = np.sin(t.value)
+
+        tt_mesh = MeshProduct(self.t_mesh, self.t_mesh)
+
+        g_l = Gf(mesh=tt_mesh, target_shape=())
+        g_g = Gf(mesh=tt_mesh, target_shape=())
+        g_sg_ref_l = Gf(mesh=tt_mesh, target_shape=())
+        g_sg_ref_g = Gf(mesh=tt_mesh, target_shape=())
+        sg_g_ref_l = Gf(mesh=tt_mesh, target_shape=())
+        sg_g_ref_g = Gf(mesh=tt_mesh, target_shape=())
+        for t1, t2 in tt_mesh:
+            dt = t1 - t2
+            g_g[t1, t2], g_l[t1, t2] = single_state_g_l(0.1, 0.6, dt)
+            g_sg_ref_l[t1, t2] = g_l[t1, t2] * sg[BW][t2]
+            g_sg_ref_g[t1, t2] = g_g[t1, t2] * sg[FW][t2]
+            sg_g_ref_l[t1, t2] = sg[FW][t1] * g_l[t1, t2]
+            sg_g_ref_g[t1, t2] = sg[BW][t1] * g_g[t1, t2]
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+        self._test_conv_reg_sing(g, sg,
+                                 g_sg_ref_l, g_sg_ref_g, sg_g_ref_l, sg_g_ref_g)
+
+    def test_conv_reg_sing_matrix(self):
+        sg = Singular2PKeldyshGF(mesh=self.t_mesh,
+                                 arg_index_shapes=((2,), (2,)))
+        for t in self.t_mesh:
+            sg[FW][t] = np.array([[2, 3], [4, 5]]) * np.cos(t.value)
+            sg[BW][t] = np.array([[6, 7], [8, 9]]) * np.sin(t.value)
+
+        tt_mesh = MeshProduct(self.t_mesh, self.t_mesh)
+
+        g_l = Gf(mesh=tt_mesh, target_shape=(2, 2))
+        g_g = Gf(mesh=tt_mesh, target_shape=(2, 2))
+        g_sg_ref_l = Gf(mesh=tt_mesh, target_shape=(2, 2))
+        g_sg_ref_g = Gf(mesh=tt_mesh, target_shape=(2, 2))
+        sg_g_ref_l = Gf(mesh=tt_mesh, target_shape=(2, 2))
+        sg_g_ref_g = Gf(mesh=tt_mesh, target_shape=(2, 2))
+        for t1, t2 in tt_mesh:
+            dt = t1 - t2
+            g_val, l_val = single_state_g_l(0.1, 0.6, dt)
+            g_g[t1, t2] = np.array([[10, 11], [12, 13]]) * g_val
+            g_l[t1, t2] = np.array([[14, 15], [16, 17]]) * l_val
+            g_sg_ref_l[t1, t2] = g_l[t1, t2] @ sg[BW][t2]
+            g_sg_ref_g[t1, t2] = g_g[t1, t2] @ sg[FW][t2]
+            sg_g_ref_l[t1, t2] = sg[FW][t1] @ g_l[t1, t2]
+            sg_g_ref_g[t1, t2] = sg[BW][t1] @ g_g[t1, t2]
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+        self._test_conv_reg_sing(g, sg,
+                                 g_sg_ref_l, g_sg_ref_g, sg_g_ref_l, sg_g_ref_g)
+
+    def test_conv_reg_sing_scalar_bz(self):
+        bz_mesh = self.bz_meshes[0]
+        tk_mesh = MeshProduct(self.t_mesh, bz_mesh)
+
+        sg = Singular2PKeldyshGF(mesh=tk_mesh, arg_index_shapes=((), ()))
+        for t, k in tk_mesh:
+            sg[FW][t, k] = k[0] * np.cos(t.value)
+            sg[BW][t, k] = k[0] * np.sin(t.value)
+
+        ttk_mesh = MeshProduct(self.t_mesh, self.t_mesh, bz_mesh)
+
+        g_l = Gf(mesh=ttk_mesh, target_shape=())
+        g_g = Gf(mesh=ttk_mesh, target_shape=())
+        g_sg_ref_l = Gf(mesh=ttk_mesh, target_shape=())
+        g_sg_ref_g = Gf(mesh=ttk_mesh, target_shape=())
+        sg_g_ref_l = Gf(mesh=ttk_mesh, target_shape=())
+        sg_g_ref_g = Gf(mesh=ttk_mesh, target_shape=())
+        for t1, t2, k in ttk_mesh:
+            eps = 0.6 + 0.01 * np.cos(k.value[0])
+            dt = t1 - t2
+            g_g[t1, t2, k], g_l[t1, t2, k] = single_state_g_l(0.1, eps, dt)
+            g_sg_ref_l[t1, t2, k] = g_l[t1, t2, k] * sg[BW][t2, k]
+            g_sg_ref_g[t1, t2, k] = g_g[t1, t2, k] * sg[FW][t2, k]
+            sg_g_ref_l[t1, t2, k] = sg[FW][t1, k] * g_l[t1, t2, k]
+            sg_g_ref_g[t1, t2, k] = sg[BW][t1, k] * g_g[t1, t2, k]
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+        self._test_conv_reg_sing(g, sg,
+                                 g_sg_ref_l, g_sg_ref_g, sg_g_ref_l, sg_g_ref_g)
+
+    def test_conv_reg_sing_matrix_bz(self):
+        bz_mesh = self.bz_meshes[0]
+        tk_mesh = MeshProduct(self.t_mesh, bz_mesh)
+
+        sg = Singular2PKeldyshGF(mesh=tk_mesh, arg_index_shapes=((2,), (2,)))
+        for t, k in tk_mesh:
+            sg[FW][t, k] = k[0] * np.array([[2, 3], [4, 5]]) * np.cos(t.value)
+            sg[BW][t, k] = k[0] * np.array([[6, 7], [8, 9]]) * np.sin(t.value)
+
+        ttk_mesh = MeshProduct(self.t_mesh, self.t_mesh, bz_mesh)
+
+        g_l = Gf(mesh=ttk_mesh, target_shape=(2, 2))
+        g_g = Gf(mesh=ttk_mesh, target_shape=(2, 2))
+        g_sg_ref_l = Gf(mesh=ttk_mesh, target_shape=(2, 2))
+        g_sg_ref_g = Gf(mesh=ttk_mesh, target_shape=(2, 2))
+        sg_g_ref_l = Gf(mesh=ttk_mesh, target_shape=(2, 2))
+        sg_g_ref_g = Gf(mesh=ttk_mesh, target_shape=(2, 2))
+        for t1, t2, k in ttk_mesh:
+            eps = 0.6 + 0.01 * np.cos(k.value[0])
+            dt = t1 - t2
+            g_val, l_val = single_state_g_l(0.1, eps, dt)
+            g_g[t1, t2, k] = np.array([[10, 11], [12, 13]]) * g_val
+            g_l[t1, t2, k] = np.array([[14, 15], [16, 17]]) * l_val
+            g_sg_ref_l[t1, t2, k] = g_l[t1, t2, k] @ sg[BW][t2, k]
+            g_sg_ref_g[t1, t2, k] = g_g[t1, t2, k] @ sg[FW][t2, k]
+            sg_g_ref_l[t1, t2, k] = sg[FW][t1, k] @ g_l[t1, t2, k]
+            sg_g_ref_g[t1, t2, k] = sg[BW][t1, k] @ g_g[t1, t2, k]
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+        self._test_conv_reg_sing(g, sg,
+                                 g_sg_ref_l, g_sg_ref_g, sg_g_ref_l, sg_g_ref_g)
+
+    def test_conv_reg_sing_scalar_bz1_bz2(self):
+        tk1_mesh = MeshProduct(self.t_mesh, self.bz_meshes[0])
+
+        sg = Singular2PKeldyshGF(mesh=tk1_mesh, arg_index_shapes=((), ()))
+        for t, k in tk1_mesh:
+            sg[FW][t, k] = k[0] * np.cos(t.value)
+            sg[BW][t, k] = k[0] * np.sin(t.value)
+
+        ttk2_mesh = MeshProduct(self.t_mesh, self.t_mesh, self.bz_meshes[1])
+
+        g_l = Gf(mesh=ttk2_mesh, target_shape=())
+        g_g = Gf(mesh=ttk2_mesh, target_shape=())
+        for t1, t2, k in ttk2_mesh:
+            eps = 0.6 + 0.01 * np.cos(k.value[0])
+            dt = t1 - t2
+            g_g[t1, t2, k], g_l[t1, t2, k] = single_state_g_l(0.1, eps, dt)
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+
+        ttk1k2_mesh = MeshProduct(self.t_mesh, self.t_mesh,
+                                  self.bz_meshes[0], self.bz_meshes[1])
+        ttk2k1_mesh = MeshProduct(self.t_mesh, self.t_mesh,
+                                  self.bz_meshes[1], self.bz_meshes[0])
+        g_sg_ref_l = Gf(mesh=ttk2k1_mesh, target_shape=())
+        g_sg_ref_g = Gf(mesh=ttk2k1_mesh, target_shape=())
+        sg_g_ref_l = Gf(mesh=ttk1k2_mesh, target_shape=())
+        sg_g_ref_g = Gf(mesh=ttk1k2_mesh, target_shape=())
+        for t1, t2, k1, k2 in ttk1k2_mesh:
+            g_sg_ref_l[t1, t2, k2, k1] = g_l[t1, t2, k2] * sg[BW][t2, k1]
+            g_sg_ref_g[t1, t2, k2, k1] = g_g[t1, t2, k2] * sg[FW][t2, k1]
+            sg_g_ref_l[t1, t2, k1, k2] = sg[FW][t1, k1] * g_l[t1, t2, k2]
+            sg_g_ref_g[t1, t2, k1, k2] = sg[BW][t1, k1] * g_g[t1, t2, k2]
+        self._test_conv_reg_sing(g, sg,
+                                 g_sg_ref_l, g_sg_ref_g, sg_g_ref_l, sg_g_ref_g)
+
+    def test_conv_reg_sing_matrix_bz1_bz2(self):
+        tk1_mesh = MeshProduct(self.t_mesh, self.bz_meshes[0])
+
+        sg = Singular2PKeldyshGF(mesh=tk1_mesh, arg_index_shapes=((2,), (2,)))
+        for t, k in tk1_mesh:
+            sg[FW][t, k] = np.array([[2, 3], [4, 5]]) * k[0] * np.cos(t.value)
+            sg[BW][t, k] = np.array([[6, 7], [8, 9]]) * k[0] * np.sin(t.value)
+
+        ttk2_mesh = MeshProduct(self.t_mesh, self.t_mesh, self.bz_meshes[1])
+
+        g_l = Gf(mesh=ttk2_mesh, target_shape=(2, 2))
+        g_g = Gf(mesh=ttk2_mesh, target_shape=(2, 2))
+        for t1, t2, k in ttk2_mesh:
+            eps = 0.6 + 0.01 * np.cos(k.value[0])
+            dt = t1 - t2
+            g_val, l_val = single_state_g_l(0.1, eps, dt)
+            g_g[t1, t2, k] = np.array([[10, 11], [12, 13]]) * g_val
+            g_l[t1, t2, k] = np.array([[14, 15], [16, 17]]) * l_val
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+
+        ttk1k2_mesh = MeshProduct(self.t_mesh, self.t_mesh,
+                                  self.bz_meshes[0], self.bz_meshes[1])
+        ttk2k1_mesh = MeshProduct(self.t_mesh, self.t_mesh,
+                                  self.bz_meshes[1], self.bz_meshes[0])
+        g_sg_ref_l = Gf(mesh=ttk2k1_mesh, target_shape=(2, 2))
+        g_sg_ref_g = Gf(mesh=ttk2k1_mesh, target_shape=(2, 2))
+        sg_g_ref_l = Gf(mesh=ttk1k2_mesh, target_shape=(2, 2))
+        sg_g_ref_g = Gf(mesh=ttk1k2_mesh, target_shape=(2, 2))
+        for t1, t2, k1, k2 in ttk1k2_mesh:
+            g_sg_ref_l[t1, t2, k2, k1] = g_l[t1, t2, k2] @ sg[BW][t2, k1]
+            g_sg_ref_g[t1, t2, k2, k1] = g_g[t1, t2, k2] @ sg[FW][t2, k1]
+            sg_g_ref_l[t1, t2, k1, k2] = sg[FW][t1, k1] @ g_l[t1, t2, k2]
+            sg_g_ref_g[t1, t2, k1, k2] = sg[BW][t1, k1] @ g_g[t1, t2, k2]
+        self._test_conv_reg_sing(g, sg,
+                                 g_sg_ref_l, g_sg_ref_g, sg_g_ref_l, sg_g_ref_g)
 
 
 if __name__ == '__main__':
