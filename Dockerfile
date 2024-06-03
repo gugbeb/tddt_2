@@ -2,7 +2,7 @@
 FROM flatironinstitute/triqs:3.1.1 as base
 LABEL maintainer="Igor Krivenko <igor.s.krivenko@gmail.com>"
 LABEL description="Implementation of the time-dependent dual TRILEX theory"
-LABEL version="0.3.1"
+LABEL version="0.3.2"
 
 USER root
 RUN useradd -m -s /bin/bash -u 999 build && echo "build:build" | chpasswd
