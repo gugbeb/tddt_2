@@ -1081,10 +1081,10 @@ def conv(a: Union[KeldyshGF, Singular2PKeldyshGF],  # noqa: C901
                     sign *= -1
         br_res = tuple(br[:n_args_res])
         sign *= (-1) ** br[n_args_res:].count(Branch.BACKWARD)
-        res[br_res].data[:] += sign * np.einsum(subs,
-                                                a[br_a].data,
-                                                *w,
-                                                b[br_b].data,
-                                                optimize="optimal")
+        res[br_res].data[...] += sign * np.einsum(subs,
+                                                  a[br_a].data,
+                                                  *w,
+                                                  b[br_b].data,
+                                                  optimize="optimal")
 
     return res
