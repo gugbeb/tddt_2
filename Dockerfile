@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM flatironinstitute/triqs:3.1.1 as base
-LABEL maintainer="Igor Krivenko <igor.s.krivenko@gmail.com>"
+LABEL maintainer="Igor Krivenko <iskrivenko@proton.me>"
 LABEL description="Implementation of the time-dependent dual TRILEX theory"
 LABEL version="0.3.2"
 
