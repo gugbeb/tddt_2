@@ -3,6 +3,7 @@
 #
 
 from itertools import product
+from warnings import warn
 import numpy as np
 
 from triqs.gf import Gf, MeshReTime
@@ -226,7 +227,10 @@ class VIE2Solver:
         assert f.shape == self.f2_shape
         assert q.shape == self.f2_shape
 
-        np.testing.assert_allclose(f, self._herm_conj(f), atol=1e-14)
+        f_herm_conj = self._herm_conj(f)
+        if not np.allclose(f, f_herm_conj, atol=1e-14):
+            d = np.max(np.abs(f - f_herm_conj))
+            warn(f"The integral kernel 'f' is not Hermitian, max|f-f^†| = {d}")
 
         g = np.empty(q.shape, dtype=complex)
 
