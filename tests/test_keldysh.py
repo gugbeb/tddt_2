@@ -523,6 +523,86 @@ class TestKeldyshGF(unittest.TestCase):
         assert_gfs_are_close(g.retarded(),
                              conj(g_hc.advanced(), n_left_indices=2))
 
+    def test_transpose(self):
+        t_mesh = MeshReTime(0, 6.0, 7)
+        tt_mesh = MeshProduct(t_mesh, t_mesh)
+
+        # Scalar-valued GF
+        g_l = Gf(mesh=tt_mesh, target_shape=())
+        g_g = Gf(mesh=tt_mesh, target_shape=())
+
+        for t1, t2 in tt_mesh:
+            e = np.exp(-1j * 2.0 * (t1.value - t2.value))
+            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
+            g_l[t1, t2] = -1j * -0.2 * e
+
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+        g_T = g.T
+        for b1, b2 in product(Branch, Branch):
+            for t1, t2 in tt_mesh:
+                z1, z2 = CP(b1, t1), CP(b2, t2)
+                self.assertEqual(g_T[z1, z2], g[z2, z1])
+
+        # Matrix-valued GF
+        h_mat = np.array([[1.0, 0.5j], [-0.5j, 2.0]])
+
+        g_l = Gf(mesh=tt_mesh, target_shape=(2, 2))
+        g_g = Gf(mesh=tt_mesh, target_shape=(2, 2))
+
+        for t1, t2 in tt_mesh:
+            e = expm(-1j * h_mat * (t1.value - t2.value))
+            g_g[t1, t2] = -1j * (1.0 - 0.1) * e
+            g_l[t1, t2] = -1j * -0.2 * e
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+        g_T = g.T
+        for b1, b2 in product(Branch, Branch):
+            for t1, t2 in tt_mesh:
+                z1, z2 = CP(b1, t1), CP(b2, t2)
+                assert_array_equal(g_T[z1, z2], g[z2, z1].T)
+
+        # Matrix-valued GF with an extra k-mesh component
+        n_k = 4
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
+
+        g_l = Gf(mesh=mesh, target_shape=(3, 2))
+        g_g = Gf(mesh=mesh, target_shape=(3, 2))
+        ten = np.arange(3 * 2).reshape((3, 2))
+        for k in bz_mesh:
+            eps = np.sum(k.value)
+            for t1, t2 in MeshProduct(t_mesh, t_mesh):
+                e = expm(-1j * eps * (t1.value - t2.value))
+                g_g[t1, t2, k] = -1j * (1.0 - 0.1) * ten * e
+                g_l[t1, t2, k] = -1j * -0.2 * ten * e
+        g = KeldyshGF.from_lesser_greater(g_l, g_g)
+        g_T = g.T
+        for b1, b2 in product(Branch, Branch):
+            for t1, t2, k in g.mesh:
+                z1, z2 = CP(b1, t1), CP(b2, t2)
+                assert_array_equal(g_T[z1, z2][k], g[z2, z1][k].T)
+
+        # Tensor-valued GF with an extra k-mesh component
+        n_k = 4
+        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
+
+        g_l = Gf(mesh=mesh, target_shape=(2, 3, 4))
+        g_g = Gf(mesh=mesh, target_shape=(2, 3, 4))
+        for k in bz_mesh:
+            eps = np.sum(k.value)
+            ten = np.arange(2 * 3 * 4).reshape((2, 3, 4))
+            for t1, t2 in MeshProduct(t_mesh, t_mesh):
+                e = np.exp(-1j * (t1.value - t2.value))
+                g_g[t1, t2, k] = -1j * (1.0 - 0.1) * ten * e
+                g_l[t1, t2, k] = -1j * -0.1 * ten * e
+        g = KeldyshGF.from_lesser_greater(g_l, g_g, n_left_target_axes=1)
+        g_T = g.T
+        for b1, b2 in product(Branch, Branch):
+            for t1, t2, k in g.mesh:
+                z1, z2 = CP(b1, t1), CP(b2, t2)
+                assert_array_equal(g_T[z1, z2][k],
+                                   np.moveaxis(g[z2, z1][k], 0, 2))
+
     def _conv_g_l(self, occ1, occ2, eps1, eps2, t1, t2):
         dt = t1 - t2
         return (-1j / (eps1 - eps2) * (

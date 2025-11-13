@@ -535,6 +535,34 @@ class KeldyshGF(ComponentwiseArithmetics):
 
         return True
 
+    @property
+    def T(self) -> KeldyshGF:
+        r"""
+        For a 2-point Keldysh Green's function, return its version with the
+        swapped contour point arguments and their respective integer indices
+        """
+        assert self.n_args == 2, \
+            "This method is valid only for a 2-point Green's function"
+
+        g = KeldyshGF(mesh=self.mesh,
+                      arg_index_shapes=(self.arg_index_shapes[1],
+                                        self.arg_index_shapes[0]))
+
+        nnt = len(self.non_time_mesh.components)
+        nli = len(self.arg_index_shapes[0])
+        nri = len(self.arg_index_shapes[1])
+
+        axes_from = (0, 1, *range(2 + nnt, 2 + nnt + nli + nri))
+        axes_to = (1, 0, *range(2 + nnt + nri, 2 + nnt + nri + nli),
+                         *range(2 + nnt, 2 + nnt + nri))
+
+        for b1, b2 in product(Branch, repeat=2):
+            g[b1, b2].data[:] = np.moveaxis(self[b2, b1].data,
+                                            axes_from,
+                                            axes_to)
+
+        return g
+
 
 class Singular2PKeldyshGF(ComponentwiseArithmetics):
     r"""
