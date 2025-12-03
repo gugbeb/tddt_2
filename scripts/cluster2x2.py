@@ -37,8 +37,6 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.gf import MeshBrillouinZone
 
 from tddt.vie2 import solve_vie2
-import matplotlib.pyplot as plt
-from h5 import HDFArchive
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
 ########################## Reference system #######################
@@ -52,7 +50,7 @@ mu1= 0.5 * U1
 #Usp = -U/2
 Uch = U1/2
 Usp = -U1/2
-t1 =  1.0 #0.25 # nearest neighbor hopping 
+t1 =  1.0 #0.25 # nearest neighbor hopping
 t2 =  0.0 # next nearest neighbor hopping
 A = 0.0
 Omega = 4.0
@@ -89,10 +87,9 @@ ttk_mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 tttk_mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
 
 
-# Keldysh branches 
+# Keldysh branches
 FW = Branch.FORWARD
 BW = Branch.BACKWARD
-branches = (FW, BW)
 
 
 # time dependent hopping for Hamiltonian
@@ -131,7 +128,7 @@ for t, k in tk_mesh:
 eps_s2p_K = Singular2PKeldyshGF.from_retime(eps_tk)
 
 
-# Dispersion reference system 
+# Dispersion reference system
 #TODO: compare to dt_pos/ dt_neg
 def V(tx2, axis, sign, t):
     """ axis = x,y
@@ -149,7 +146,7 @@ def Vq(k, channel):
     return Vq
 
 
-# Bare lattice interaction 
+# Bare lattice interaction
 Uq = Gf(mesh=tk_mesh, target_shape=(2, 2))
 Uq_tilde = Gf(mesh=tk_mesh, target_shape=(2, 2))
 
@@ -163,7 +160,7 @@ Uq_s2p_K = Singular2PKeldyshGF.from_retime(Uq)
 Uq_tilde_s2p_K = Singular2PKeldyshGF.from_retime(Uq_tilde)
 
 
-# fermionic operators for the reference problem 
+# fermionic operators for the reference problem
 spin_names = ('up', 'dn')
 #fops = set(product(spin_names, [0, 1, 2, 3, 4]))
 fops = set(product(spin_names, [0, 1, 2, 3]))
@@ -183,7 +180,7 @@ h0 = h0 + \
     sum(dt_pos_x0 * c_dag(sn, 0) * c(sn, 2) + dt_neg_x0 * c_dag(sn, 2) * c(sn, 0)
         for sn in spin_names) + \
     sum(dt_neg_xx0* c_dag(sn, 0) * c(sn, 3) + dt_pos_xx0* c_dag(sn, 3) * c(sn, 0)
-        for sn in spin_names) 
+        for sn in spin_names)
 
 init_state = make_equilibrium_init_state(h0,
                                          fermion_indices=fops,
@@ -204,7 +201,7 @@ h  = h  + \
     sum(dt_pos_x * c_dag(sn, 0) * c(sn, 2) + dt_neg_x * c_dag(sn, 2) * c(sn, 0)
         for sn in spin_names) + \
     sum(dt_neg_xx* c_dag(sn, 0) * c(sn, 3) + dt_pos_xx* c_dag(sn, 3) * c(sn, 0)
-        for sn in spin_names) 
+        for sn in spin_names)
 
 params = {}
 params['verbosity'] = 2                      # Verbosity level
@@ -225,7 +222,7 @@ gf_ref = compute_keldysh_gf(gf_struct_ref,
 
 # Make Keldysh GF of a single fermion with energy `eps` and occupation number `occup_n`
 def make_g(eps, occup_n, t_mesh):
-    tt_mesh = MeshProduct(t_mesh, t_mesh)
+    tt_mesh = tt_mesh
     g_l = Gf(mesh=tt_mesh, target_shape=(1, 1))
     g_g = Gf(mesh=tt_mesh, target_shape=(1, 1))
     for time1, time2 in tt_mesh:
@@ -235,8 +232,8 @@ def make_g(eps, occup_n, t_mesh):
 
 
 occup_n = 0.5
-# Bare impurity GF for 3 bath cites 
-eps = ex 
+# Bare impurity GF for 3 bath cites
+eps = ex
 gimp0 = make_g(eps, occup_n, t_mesh)
 occup_n = 0.1
 eps = exx
@@ -250,20 +247,19 @@ gimp = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,))) # GF for site 0 of
 gref = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,4), (2,4))) # time, time, spin, site, spin, site for example: (11, 11, 2, 5, 2, 5)
 
 
-for br1 in branches:
-    for br2 in branches:
-        gimp[br1,br2][0,0].data[...] = gf_ref['up'][br1,br2].data[...,0,0]
-        gimp[br1,br2][1,1].data[...] = gf_ref['dn'][br1,br2].data[...,0,0]
-        for i in range(4): # sites
-            gref[br1,br2].data[...,0,i,0,i] = gf_ref['up'][br1,br2].data[...,i,i]
-            gref[br1,br2].data[...,1,i,1,i] = gf_ref['dn'][br1,br2].data[...,i,i]
+for br1, br2 in product(Branch, Branch):
+    gimp[br1,br2][0,0].data[...] = gf_ref['up'][br1,br2].data[...,0,0]
+    gimp[br1,br2][1,1].data[...] = gf_ref['dn'][br1,br2].data[...,0,0]
+    for i in range(4): # sites
+        gref[br1,br2].data[...,0,i,0,i] = gf_ref['up'][br1,br2].data[...,i,i]
+        gref[br1,br2].data[...,1,i,1,i] = gf_ref['dn'][br1,br2].data[...,i,i]
 
 with open('data/tddt_ref_sys_t0_loc.txt', 'w') as file:
     # Loop to generate data
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(gf_ref['up'][FW,FW].data[0,t.index,0,0].real, gf_ref['up'][FW,FW].data[0,t.index,0,0].imag, 
+        file.write("{} {} {} {}\n".format(gf_ref['up'][FW,FW].data[0,t.index,0,0].real, gf_ref['up'][FW,FW].data[0,t.index,0,0].imag,
                                           gf_ref['up'][FW,BW].data[0,t.index,0,0].real, gf_ref['up'][FW,BW].data[0,t.index,0,0].imag))
 
 with open('data/tddt_ref_sys_01.txt', 'w') as file:
@@ -271,24 +267,23 @@ with open('data/tddt_ref_sys_01.txt', 'w') as file:
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(gf_ref['up'][FW,FW].data[0,t.index,0,1].real, gf_ref['up'][FW,FW].data[0,t.index,0,1].imag, 
+        file.write("{} {} {} {}\n".format(gf_ref['up'][FW,FW].data[0,t.index,0,1].real, gf_ref['up'][FW,FW].data[0,t.index,0,1].imag,
                                           gf_ref['up'][FW,BW].data[0,t.index,0,1].real, gf_ref['up'][FW,BW].data[0,t.index,0,1].imag))
-        
+
 
 # Hybridisation function delta and Dual_reg GF0
 delta = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
 
 for sp in (0,1):
-    for br1 in branches:
-        for br2 in branches:
-                for time1, time2 in MeshProduct(t_mesh, t_mesh):
-                    z1 = ContourPoint(br1, time1)
-                    z2 = ContourPoint(br2, time2)
-                    print('V: ', V(tx,  'x',+1,time1.linear_index))
-                    print('gimp0: ', gimp0[z1,z2][0,0])
-                    delta[z1,z2][sp,sp] = V(tx,'x',+1,time1.linear_index) * gimp0[z1,z2][0,0] * V(tx,'x',-1,time2.linear_index) \
-                                          + V(txx,'x',+1,time1.linear_index) * gimp0p[z1,z2][0,0] * V(txx,'x',-1,time2.linear_index) \
-                                          + V(txx,'x',-1,time1.linear_index) * gimp0m[z1,z2][0,0] * V(txx,'x',+1,time2.linear_index) 
+    for br1, br2 in product(Branch, Branch):
+        for time1, time2 in tt_mesh:
+            z1 = ContourPoint(br1, time1)
+            z2 = ContourPoint(br2, time2)
+            print('V: ', V(tx,  'x',+1,time1.linear_index))
+            print('gimp0: ', gimp0[z1,z2][0,0])
+            delta[z1,z2][sp,sp] = V(tx,'x',+1,time1.linear_index) * gimp0[z1,z2][0,0] * V(tx,'x',-1,time2.linear_index) \
+                                    + V(txx,'x',+1,time1.linear_index) * gimp0p[z1,z2][0,0] * V(txx,'x',-1,time2.linear_index) \
+                                    + V(txx,'x',-1,time1.linear_index) * gimp0m[z1,z2][0,0] * V(txx,'x',+1,time2.linear_index)
 
 
 eps_gimp = eps_s2p_K @ gimp
@@ -302,14 +297,13 @@ delta_gimp_delta = delta_gimp @ delta
 
 
 Q = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1 in branches: 
-    for br2 in branches:
-        for k in bz_mesh:
-            #print('k: ',k[0])
-            for time1, time2 in MeshProduct(t_mesh, t_mesh):
-                Q[br1,br2][time1,time2,k] = - delta[br1,br2][time1,time2] \
-                                            + eps_gimp_eps[br1,br2][time1,time2,k] \
-                                            - delta_gimp_eps[br1,br2][time1,time2,k]
+for br1, br2 in product(Branch, Branch):
+    for k in bz_mesh:
+        #print('k: ',k[0])
+        for time1, time2 in tt_mesh:
+            Q[br1,br2][time1,time2,k] = - delta[br1,br2][time1,time2] \
+                                        + eps_gimp_eps[br1,br2][time1,time2,k] \
+                                        - delta_gimp_eps[br1,br2][time1,time2,k]
 
 
 #  Test print
@@ -319,18 +313,17 @@ with open('data/Qherm.txt', 'w') as file:
     # Loop to generate data
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
-        file.write("{} {} {} {}\n".format(np.sum(Q[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(Q[FW,BW].data[0,t.index,:,0,0].imag)/4.0, 
+        file.write("{} {} {} {}\n".format(np.sum(Q[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(Q[FW,BW].data[0,t.index,:,0,0].imag)/4.0,
                                           np.sum(Q_herm[BW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(Q_herm[BW,FW].data[0,t.index,:,0,0].imag)/4.0))
 Q = 0.5 * (Q + herm_conj(Q)) # for now to circumvent the hermicity check !!!!
 
 
 F = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1 in branches:
-    for br2 in branches:
-        for k in bz_mesh:
-            for time1, time2 in MeshProduct(t_mesh, t_mesh):
-                F[br1,br2][time1,time2,k] = - eps_gimp[br1,br2][time1,time2,k] \
-                                            + delta_gimp[br1,br2][time1,time2]
+for br1, br2 in product(Branch, Branch):
+    for k in bz_mesh:
+        for time1, time2 in tt_mesh:
+            F[br1,br2][time1,time2,k] = - eps_gimp[br1,br2][time1,time2,k] \
+                                        + delta_gimp[br1,br2][time1,time2]
 
 
 #print('F is Hermitian:', F.is_hermitian())
@@ -371,13 +364,12 @@ def generator_susc_imp(ind1, ind2):
         g_el = KeldyshGF(mesh=tt_mesh)
         return g_el
 
-susc_imp = KeldyshGF.from_arg_index_gen(generator_susc_imp, mesh=MeshProduct(t_mesh, t_mesh), arg_index_shapes=arg_index_shapes)
+susc_imp = KeldyshGF.from_arg_index_gen(generator_susc_imp, mesh=tt_mesh, arg_index_shapes=arg_index_shapes)
 
-susc_imp_U = KeldyshGF(mesh=MeshProduct(t_mesh, t_mesh), arg_index_shapes=arg_index_shapes)
-for br1 in branches:
-    for br2 in branches:
-            susc_imp_U[br1,br2].data[:,:,0,0] = susc_imp[br1,br2].data[:,:,0,0]*Uch
-            susc_imp_U[br1,br2].data[:,:,1,1] = susc_imp[br1,br2].data[:,:,1,1]*Usp
+susc_imp_U = KeldyshGF(mesh=tt_mesh, arg_index_shapes=arg_index_shapes)
+for br1, br2 in product(Branch, Branch):
+    susc_imp_U[br1,br2].data[:,:,0,0] = susc_imp[br1,br2].data[:,:,0,0]*Uch
+    susc_imp_U[br1,br2].data[:,:,1,1] = susc_imp[br1,br2].data[:,:,1,1]*Usp
 
 
 # Impurity polarization
@@ -415,11 +407,10 @@ def generator_three_point_vertex(ind1, ind2, ind3):
 three_point_corr = KeldyshGF.from_arg_index_gen(generator_three_point_vertex, mesh=MeshProduct(t_mesh, t_mesh, t_mesh), arg_index_shapes=arg_index_shapes)
 
 
-U_pi_imp = KeldyshGF(mesh=MeshProduct(t_mesh, t_mesh), arg_index_shapes=((2,),(2,)))
-for br1 in branches:
-    for br2 in branches:
-            U_pi_imp[br1,br2].data[:,:,0,0] = Uch*pi_imp[br1,br2].data[:,:,0,0]
-            U_pi_imp[br1,br2].data[:,:,1,1] = Usp*pi_imp[br1,br2].data[:,:,1,1]
+U_pi_imp = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,),(2,)))
+for br1, br2 in product(Branch, Branch):
+    U_pi_imp[br1,br2].data[:,:,0,0] = Uch*pi_imp[br1,br2].data[:,:,0,0]
+    U_pi_imp[br1,br2].data[:,:,1,1] = Usp*pi_imp[br1,br2].data[:,:,1,1]
 
 three_point_corr_U_pi_imp = conv(three_point_corr, U_pi_imp,
               [(2, 0)])
@@ -449,12 +440,12 @@ eps_s2p_loc = Singular2PKeldyshGF(mesh=t_mesh, arg_index_shapes=((2,), (2,)))
 
 for time in t_mesh:
     for sigm in range(2):
-        for br in branches:
+        for br in Branch:
             eps_s2p_loc[br][time][sigm,sigm] = np.mean(eps_s2p_K[br1][time,:][sigm,sigm].data)
             eps_K = eps_s2p_K[br][time,:][sigm,sigm].data.reshape(nkx,nky,nkz)
 
-            eps_s2p_R[br].data[time.linear_index,:,sigm,sigm] = np.fft.ifftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k -> R 
-            eps_s2p_mR[br].data[time.linear_index,:,sigm,sigm] = np.fft.fftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k+q -> mR 
+            eps_s2p_R[br].data[time.linear_index,:,sigm,sigm] = np.fft.ifftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k -> R
+            eps_s2p_mR[br].data[time.linear_index,:,sigm,sigm] = np.fft.fftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k+q -> mR
 
 print(eps_s2p_R[FW].data[0,:,0,0].reshape(nkx,nky,nkz))
 
@@ -466,24 +457,23 @@ Uq_tilde_s2p_R = Singular2PKeldyshGF(mesh=tk_mesh, arg_index_shapes=((2,), (2,))
 Uq0_tilde = Singular2PKeldyshGF(mesh=t_mesh, arg_index_shapes=((2,), (2,)))
 for time in t_mesh:
     for ch in range(2):
-        for br in branches:
+        for br in Branch:
             Uq_tilde_K = Uq_tilde_s2p_K[br][time,:][ch,ch].data.reshape(nkx,nky,nkz)
             Uq0_tilde[br][time][ch,ch] = Uq_tilde_s2p_K[br][time,q0][ch,ch]
-            
-            Uq_tilde_s2p_R[br].data[time.linear_index,:,ch,ch] = np.fft.ifftn(Uq_tilde_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R 
+
+            Uq_tilde_s2p_R[br].data[time.linear_index,:,ch,ch] = np.fft.ifftn(Uq_tilde_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
 
 
 Gd0_reg_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 Gd0_reg_mR = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 Gd0_reg_loc = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
 for time1, time2 in tt_mesh:
-    for br1 in branches:
-        for br2 in branches:
-            for sigm in range(2): # spin up and dn
-                Gd0_reg_loc[br1,br2][time1,time2][sigm,sigm] = np.mean(Gd0_reg[br1,br2][time1,time2,:][sigm,sigm].data)
-                Gd0_reg_K = Gd0_reg[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-                Gd0_reg_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_reg_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R 
-                Gd0_reg_mR[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.fftn(Gd0_reg_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> -R 
+    for br1, br2 in product(Branch, Branch):
+        for sigm in range(2): # spin up and dn
+            Gd0_reg_loc[br1,br2][time1,time2][sigm,sigm] = np.mean(Gd0_reg[br1,br2][time1,time2,:][sigm,sigm].data)
+            Gd0_reg_K = Gd0_reg[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
+            Gd0_reg_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_reg_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
+            Gd0_reg_mR[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.fftn(Gd0_reg_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> -R
 
 
 # TODO this won't work if k-mesh does not start from Gamma point
@@ -528,11 +518,10 @@ del Pi_R_1, Pi_R_2, Pi_R_3, Pi_R_4
 
 Pi_K = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 for time1, time2 in tt_mesh:
-    for br1 in branches:
-        for br2 in branches:
-            for sigm in range(2): # spin up and dn
-                Pi = Pi_R[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-                Pi_K[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Pi, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R 
+    for br1, br2 in product(Branch, Branch):
+        for sigm in range(2): # spin up and dn
+            Pi = Pi_R[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
+            Pi_K[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Pi, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
 
 ########################### Polarization END #####################
 
@@ -542,7 +531,7 @@ Uq_tilde_s2p_K_Pi_K = Uq_tilde_s2p_K @ Pi_K
 
 mFW = Uq_tilde_s2p_K_Pi_K
 mQW = mFW @ Uq_tilde_s2p_K
-QW = W0prime - mQW 
+QW = W0prime - mQW
 
 QW = -0.5 * (QW + herm_conj(QW)) # for now to circumvent the hermicity check !!!!
 mFW = 0.5 * (mFW + herm_conj(mFW)) # for now to circumvent the hermicity check !!!!
@@ -555,12 +544,11 @@ del mFW, mQW, QW, W0prime_Pi_K, Uq_tilde_s2p_K_Pi_K
 Wprime_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 W0prime_q0 = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
 for time1, time2 in tt_mesh:
-    for br1 in branches:
-        for br2 in branches:
-            for ch in range(2): # channel charge and spin
-                W0prime_q0[br1,br2][time1,time2][ch,ch] = W0prime[br1,br2][time1,time2,q0][ch,ch]
-                Wprime_K = Wprime[br1,br2][time1,time2,:][ch,ch].data.reshape(nkx,nky,nkz)
-                Wprime_R[br1,br2].data[time1.linear_index,time2.linear_index,:,ch,ch] = np.fft.ifftn(Wprime_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k+q -> R 
+    for br1, br2 in product(Branch, Branch):
+        for ch in range(2): # channel charge and spin
+            W0prime_q0[br1,br2][time1,time2][ch,ch] = W0prime[br1,br2][time1,time2,q0][ch,ch]
+            Wprime_K = Wprime[br1,br2][time1,time2,:][ch,ch].data.reshape(nkx,nky,nkz)
+            Wprime_R[br1,br2].data[time1.linear_index,time2.linear_index,:,ch,ch] = np.fft.ifftn(Wprime_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k+q -> R
 
 ########################### Full W END #####################
 ########################### Self-Energy #####################################
@@ -577,7 +565,7 @@ Uq_tilde_s2p_RLambda = conv(Uq_tilde_s2p_R, Lambda,
              [(1, 2)])
 
 sigma_R_1 = conv(LambdaGd0_reg_mR, Wprime_RLambda,
-             [(1, 0), (2, 1)])                            
+             [(1, 0), (2, 1)])
 
 sigma_R_2 = conv(Lambdaeps_s2p_mR, Wprime_RLambda,
                [(1, 0), (2, 1)])
@@ -595,40 +583,39 @@ del sigma_R_1, sigma_R_2, sigma_R_3,sigma_R_4
 
 sigma_dual_K = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 for time1, time2 in tt_mesh:
-    for br1 in branches:
-        for br2 in branches:
-            for sigm in range(2): # spin up and dn
-                sigma = sigma_R[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-                sigma_dual_K[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(sigma, axes=(0,1,2)).reshape(nkx*nky*nkz) # R -> K 
+    for br1, br2 in product(Branch, Branch):
+        for sigm in range(2): # spin up and dn
+            sigma = sigma_R[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
+            sigma_dual_K[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(sigma, axes=(0,1,2)).reshape(nkx*nky*nkz) # R -> K
 
-del sigma_R 
+del sigma_R
 
 ############# Tadpole #####################
 
 #Lambdaeps_s2p_loc = conv(Lambda, eps_s2p_loc,
-#             [(0, 1),(1, 0)])        
+#             [(0, 1),(1, 0)])
 
 LambdaUq0_tilde = conv(Lambda, Uq0_tilde,
-             [(2, 0)]) 
+             [(2, 0)])
 
 LambdaW0prime_q0 = conv(Lambda, W0prime_q0,
-             [(2, 0)])   
+             [(2, 0)])
 
 LambdaGd0_reg_loc = conv(Lambda, Gd0_reg_loc,
              [(0, 1),(1, 0)])
-  
+
 
 sigma_tadpole_1 = conv(LambdaW0prime_q0, LambdaGd0_reg_loc,
-             [(2, 0)]) 
+             [(2, 0)])
 
 #sigma_tadpole_2 = conv(LambdaWprime_q0, Lambdaeps_s2p_loc,
-#             [(2, 0)]) 
+#             [(2, 0)])
 
 sigma_tadpole_3 = conv(LambdaUq0_tilde, LambdaGd0_reg_loc,
-             [(2, 0)]) 
+             [(2, 0)])
 
 #sigma_tadpole_4 = conv(LambdaUq0_tilde, Lambdaeps_s2p_loc,
-#             [(2, 0)]) 
+#             [(2, 0)])
 
 sigma_tadpole = -1j*(sigma_tadpole_1 + sigma_tadpole_3)
 #sigma_tadpole = -1j*(sigma_tadpole_1 + sigma_tadpole_2 + sigma_tadpole_3 + sigma_tadpole_4)
@@ -643,13 +630,12 @@ print(sigma_dual_K.mesh)
 print(sigma_tadpole.mesh)
 
 sigma_dual_full = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1 in branches:
-    for br2 in branches:
-        for sigm in range(2): # spin up and dn
-            for time1, time2 in tt_mesh:
-                for k in bz_mesh:
-                    sigma_dual_full[br1,br2][time1,time2,k][sigm,sigm] = sigma_dual_K[br1,br2][time1,time2,k][sigm,sigm] \
-                                                                         + 0.0 * sigma_tadpole[br1,br2][time1,time2][sigm,sigm] #!!!!! tadpole is set to zero !!!!!
+for br1, br2 in product(Branch, Branch):
+    for sigm in range(2): # spin up and dn
+        for time1, time2 in tt_mesh:
+            for k in bz_mesh:
+                sigma_dual_full[br1,br2][time1,time2,k][sigm,sigm] = sigma_dual_K[br1,br2][time1,time2,k][sigm,sigm] \
+                                                                        + 0.0 * sigma_tadpole[br1,br2][time1,time2][sigm,sigm] #!!!!! tadpole is set to zero !!!!!
 
 del sigma_dual_K, sigma_tadpole
 ############# Full Self-Energy END #####################
@@ -657,34 +643,31 @@ del sigma_dual_K, sigma_tadpole
 ########################### Self-Energy END #####################################
 
 K = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1 in branches:
-    for br2 in branches:
-        for k in bz_mesh:
-            for time1, time2 in MeshProduct(t_mesh, t_mesh):
-                K[br1,br2][time1,time2,k] =  sigma_dual_full[br1,br2][time1,time2,k][:,:] \
-                                                       + gref[br1,br2][time1,time2][:,0,:,0]
+for br1, br2 in product(Branch, Branch):
+    for k in bz_mesh:
+        for time1, time2 in tt_mesh:
+            K[br1,br2][time1,time2,k] =  sigma_dual_full[br1,br2][time1,time2,k][:,:] \
+                                                    + gref[br1,br2][time1,time2][:,0,:,0]
 
 L = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1 in branches:
-    for br2 in branches:
-        for k in bz_mesh:
-            for time1, time2 in MeshProduct(t_mesh, t_mesh):
-                L[br1,br2][time1,time2,k] = gref[br1,br2][time1,time2][:,0,:,0]
+for br1, br2 in product(Branch, Branch):
+    for k in bz_mesh:
+        for time1, time2 in tt_mesh:
+            L[br1,br2][time1,time2,k] = gref[br1,br2][time1,time2][:,0,:,0]
 
 
 K_test = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
-for br1 in branches:
-    for br2 in branches:
-        for k in bz_mesh:
-            for time1, time2 in MeshProduct(t_mesh, t_mesh):
-                K_test[br1,br2][time1,time2] = gref[br1,br2][time1,time2][:,0,:,0]
-                        
+for br1, br2 in product(Branch, Branch):
+    for k in bz_mesh:
+        for time1, time2 in tt_mesh:
+            K_test[br1,br2][time1,time2] = gref[br1,br2][time1,time2][:,0,:,0]
+
 
 Keps = K @ eps_s2p_K
 Leps = L @ eps_s2p_K
 
-Kdelta = K @ delta      
-Ldelta = L @ delta   
+Kdelta = K @ delta
+Ldelta = L @ delta
 
 FG = Kdelta - Keps
 FG = 0.5 * (FG + herm_conj(FG)) # for now to circumvent the hermicity check !!!!
@@ -707,19 +690,18 @@ G_latt_CPT_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 G_latt_mR = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 Gd0_full_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 for time1, time2 in tt_mesh:
-    for br1 in branches:
-        for br2 in branches:
-            for sigm in range(2): # spin up and dn
-                GR = G_latt[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-                GR_CPT  = G_latt_CPT[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
+    for br1, br2 in product(Branch, Branch):
+        for sigm in range(2): # spin up and dn
+            GR = G_latt[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
+            GR_CPT  = G_latt_CPT[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
 
-                G_latt_CPT_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(GR_CPT, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R 
-                
-                G_latt_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(GR, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R                 
-                G_latt_mR[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.fftn(GR, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> -R 
+            G_latt_CPT_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(GR_CPT, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
 
-                Gd0_full_K = Gd0_K_full[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-                Gd0_full_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_full_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R 
+            G_latt_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(GR, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
+            G_latt_mR[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.fftn(GR, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> -R
+
+            Gd0_full_K = Gd0_K_full[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
+            Gd0_full_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_full_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
 
 
 with open('data/tddt_Gd0_R.txt', 'w') as file:
@@ -734,7 +716,7 @@ with open('data/tddt_t0_loc.txt', 'w') as file:
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(G_latt[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(G_latt[FW,FW].data[0,t.index,:,0,0].imag)/4.0, 
+        file.write("{} {} {} {}\n".format(np.sum(G_latt[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(G_latt[FW,FW].data[0,t.index,:,0,0].imag)/4.0,
                                           np.sum(G_latt[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(G_latt[FW,BW].data[0,t.index,:,0,0].imag)/4.0))
 
 with open('data/tddt_CPT.txt', 'w') as file:
@@ -742,7 +724,7 @@ with open('data/tddt_CPT.txt', 'w') as file:
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(G_latt_CPT[FW,FW].data[0,t.index,:,0].real)/4.0, np.sum(G_latt_CPT[FW,FW].data[0,t.index,:,0].imag)/4.0, 
+        file.write("{} {} {} {}\n".format(np.sum(G_latt_CPT[FW,FW].data[0,t.index,:,0].real)/4.0, np.sum(G_latt_CPT[FW,FW].data[0,t.index,:,0].imag)/4.0,
                                           np.sum(G_latt_CPT[FW,BW].data[0,t.index,:,0].real)/4.0, np.sum(G_latt_CPT[FW,BW].data[0,t.index,:,0].imag)/4.0))
 
 with open('data/K.txt', 'w') as file:
@@ -750,7 +732,7 @@ with open('data/K.txt', 'w') as file:
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(K[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(K[FW,FW].data[0,t.index,:,0,0].imag)/4.0, 
+        file.write("{} {} {} {}\n".format(np.sum(K[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(K[FW,FW].data[0,t.index,:,0,0].imag)/4.0,
                                           np.sum(K[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(K[FW,BW].data[0,t.index,:,0,0].imag)/4.0))
 
 with open('data/sigma_dual.txt', 'w') as file:
@@ -758,41 +740,25 @@ with open('data/sigma_dual.txt', 'w') as file:
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(sigma_dual_full[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(sigma_dual_full[FW,FW].data[0,t.index,:,0,0].imag)/4.0, 
+        file.write("{} {} {} {}\n".format(np.sum(sigma_dual_full[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(sigma_dual_full[FW,FW].data[0,t.index,:,0,0].imag)/4.0,
                                           np.sum(sigma_dual_full[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(sigma_dual_full[FW,BW].data[0,t.index,:,0,0].imag)/4.0))
 
-with open('data/tddt_CPT_k0.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt_CPT[FW,FW].data[0,t.index,0,0,0].real, G_latt_CPT[FW,FW].data[0,t.index,0,0,0].imag, G_latt_CPT[FW,BW].data[0,t.index,0,0,0].real, G_latt_CPT[FW,BW].data[0,t.index,0,0,0].imag))
-
-with open('data/tddt_CPT_k1.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt_CPT[FW,FW].data[0,t.index,1,0,0].real, G_latt_CPT[FW,FW].data[0,t.index,1,0,0].imag, G_latt_CPT[FW,BW].data[0,t.index,1,0,0].real, G_latt_CPT[FW,BW].data[0,t.index,1,0,0].imag))
-
-with open('data/tddt_CPT_k2.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt_CPT[FW,FW].data[0,t.index,2,0,0].real, G_latt_CPT[FW,FW].data[0,t.index,2,0,0].imag, G_latt_CPT[FW,BW].data[0,t.index,2,0,0].real, G_latt_CPT[FW,BW].data[0,t.index,2,0,0].imag))
-
-with open('data/tddt_CPT_k3.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt_CPT[FW,FW].data[0,t.index,3,0,0].real, G_latt_CPT[FW,FW].data[0,t.index,3,0,0].imag, G_latt_CPT[FW,BW].data[0,t.index,3,0,0].real, G_latt_CPT[FW,BW].data[0,t.index,3,0,0].imag))
-
-
+for k in range(4):
+    with open(f"data/tddt_CPT_k{k}.txt", 'w') as file:
+        # Loop to generate data
+        for t in t_mesh:
+            # Write data to the first and second columns
+            file.write("{} {} {} {}\n".format(G_latt_CPT[FW,FW].data[0,t.index,k,0,0].real,
+                                              G_latt_CPT[FW,FW].data[0,t.index,k,0,0].imag,
+                                              G_latt_CPT[FW,BW].data[0,t.index,k,0,0].real,
+                                              G_latt_CPT[FW,BW].data[0,t.index,k,0,0].imag))
 
 with open('data/tddt_01.txt', 'w') as file:
     # Loop to generate data
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(G_latt_R[FW,FW].data[0,t.index,1,0,0].real, G_latt_R[FW,FW].data[0,t.index,1,0,0].imag, 
+        file.write("{} {} {} {}\n".format(G_latt_R[FW,FW].data[0,t.index,1,0,0].real, G_latt_R[FW,FW].data[0,t.index,1,0,0].imag,
                                           G_latt_R[FW,BW].data[0,t.index,1,0,0].real, G_latt_R[FW,BW].data[0,t.index,1,0,0].imag))
 
 with open('data/tddt_CPT_01.txt', 'w') as file:
@@ -800,30 +766,16 @@ with open('data/tddt_CPT_01.txt', 'w') as file:
     file.write(f"# (FW,BW).local (FW,BW).local)\n")
     for t in t_mesh:
         # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(G_latt_CPT_R[FW,FW].data[0,t.index,1,0,0].real, G_latt_CPT_R[FW,FW].data[0,t.index,1,0,0].imag, 
+        file.write("{} {} {} {}\n".format(G_latt_CPT_R[FW,FW].data[0,t.index,1,0,0].real, G_latt_CPT_R[FW,FW].data[0,t.index,1,0,0].imag,
                                           G_latt_CPT_R[FW,BW].data[0,t.index,1,0,0].real, G_latt_CPT_R[FW,BW].data[0,t.index,1,0,0].imag))
 
 
-with open('data/tddt_T_t0_k0.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt[FW,FW].data[0,t.index,0,0,0].real, G_latt[FW,FW].data[0,t.index,0,0,0].imag, G_latt[FW,BW].data[0,t.index,0,0,0].real, G_latt[FW,BW].data[0,t.index,0,0,0].imag))
-
-with open('data/tddt_T_t0_k1.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt[FW,FW].data[0,t.index,1,0,0].real, G_latt[FW,FW].data[0,t.index,1,0,0].imag, G_latt[FW,BW].data[0,t.index,1,0,0].real, G_latt[FW,BW].data[0,t.index,1,0,0].imag))
-
-with open('data/tddt_T_t0_k2.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt[FW,FW].data[0,t.index,2,0,0].real, G_latt[FW,FW].data[0,t.index,2,0,0].imag, G_latt[FW,BW].data[0,t.index,2,0,0].real, G_latt[FW,BW].data[0,t.index,2,0,0].imag))
-
-with open('data/tddt_T_t0_k3.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(G_latt[FW,FW].data[0,t.index,3,0,0].real, G_latt[FW,FW].data[0,t.index,3,0,0].imag, G_latt[FW,BW].data[0,t.index,3,0,0].real, G_latt[FW,BW].data[0,t.index,3,0,0].imag))
+for k in range(4):
+    with open(f"data/tddt_T_t0_k{k}.txt", 'w') as file:
+        # Loop to generate data
+        for t in t_mesh:
+            # Write data to the first and second columns
+            file.write("{} {} {} {}\n".format(G_latt[FW,FW].data[0,t.index,k,0,0].real,
+                                              G_latt[FW,FW].data[0,t.index,k,0,0].imag,
+                                              G_latt[FW,BW].data[0,t.index,k,0,0].real,
+                                              G_latt[FW,BW].data[0,t.index,k,0,0].imag))
