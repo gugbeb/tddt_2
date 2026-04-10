@@ -1,9 +1,6 @@
-import unittest
-import pytest
+from enum import Enum
 from itertools import product
 import numpy as np
-from numpy.testing import assert_array_almost_equal
-from scipy.linalg import expm  # Matrix exponential
 
 import triqs.utility.mpi  # noqa: F401
 from triqs.gf import MeshReTime, Gf
@@ -36,16 +33,75 @@ from tddt.keldysh import Singular2PKeldyshGF
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.gf import MeshBrillouinZone
 
+from tddt.models import SquarePlaquette
 from tddt.vie2 import solve_vie2
+
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
-########################## Reference system #######################
+############################ Time meshes #######################################
+t_max = 10.0
+n_t = 51
+t_mesh = MeshReTime(0, t_max, n_t)
+# Time mesh used to construct interpolators
+ti_mesh = MeshReTime(0, t_max, 5001)
+
+########################## Lattice problem #####################################
+
+t_nn = 1.0          # Nearest neighbor hopping
+t_nnn = 0.0         # Next nearest neighbor hopping
+
+# Vector potential: Amplitude and frequency
+A = 0.0
+Omega = 4.0
+# Time-dependent vector potential (x- and y-component)
+Ax_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
+Ay_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
+
+########################## Reference system ####################################
+
+# Correlated plaquette site (0)
+U = 6.0             # Hubbard interaction at t=0
+U1 = 4.0            # Hubbard interaction at t>0
+mu = 0.5 * U        # Chemical potential at t=0
+mu1 = 0.5 * U1      # Chemical potential at t>0
+
+# Energy levels of uncorrelated plaquette sites are +exx, -exx, ex
+ex = 0.0
+exx = 3.0
+
+# Hopping amplitudes between site 0 and the uncorrelated sites are txx, txx, tx
+tx = 0.7 * t_nn
+txx = 1.0 * t_nn
+
+# Temperature
+T = 0.0
+
+# Model object
+model = SquarePlaquette(
+    # 2x2 plaquette
+    N=2,
+    # Hopping matrix
+    hopping=[[-mu, txx, txx,  tx],
+             [txx, exx, 0,    0 ],
+             [txx, 0,   -exx, 0 ],
+             [tx,  0,   0,    ex]],
+    # Local interaction
+    local_int=[U, 0, 0, 0],
+    # Vector potential: Components along the two Cartesian axes
+    vector_potential=(Ax_t, Ay_t)
+)
+
+# Initial thermal state of the reference system
+init_state = model.equilibrium_init_state(T)
+
+# Local Hubbard interaction and energy level on site 0 after quench
+model.U[0] = U1
+model.t[0, 0] = -mu1
+
+# TODO
+exit()
 
 # Model parameters
-U = 6.0
-mu = 0.5 * U
-U1= 4.0
-mu1= 0.5 * U1
 #Uch = U/2
 #Usp = -U/2
 Uch = U1/2
@@ -62,6 +118,14 @@ txx= 1.0*t1
 ex=0.0
 exx=3.0
 
+# TODO: Move to tddt/dtrilex.py
+class Channel(Enum):
+    "Bosonic channel."
+    CHARGE = 0
+    "Charge channel"
+    SPIN = 1
+    "Spin channel"
+
 # time-mesh
 t_max = 3.0 # 10.0 #20.0
 n_t = 51 #21
@@ -72,6 +136,7 @@ m_interp = MeshReTime(0, t_max, n_t)
 
 
 #k-mesh
+# TODO: Remove this group of vars and use model_ref
 lat = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # 2D square lattice
 bz = BrillouinZone(lat)  # Brillouin zone of the lattice
 n_k = 2 # Number of k-points along each dimension
@@ -95,8 +160,6 @@ BW = Branch.BACKWARD
 # time dependent hopping for Hamiltonian
 dt_pos = ti(m_interp, np.array([t1*np.exp(1.j * A * np.cos(Omega * x)) for x in m_interp]))
 dt_neg = ti(m_interp, np.array([t1*np.exp(-1.j * A * np.cos(Omega * x)) for x in m_interp]))
-print(dt_pos.data)
-print(dt_pos.data.shape)
 
 # time 0 pos. for Reference System
 dt_pos_x0 = ti(m_interp, np.array([tx for x in m_interp]))
@@ -161,32 +224,10 @@ Uq_tilde_s2p_K = Singular2PKeldyshGF.from_retime(Uq_tilde)
 
 
 # fermionic operators for the reference problem
+# TODO: Move this definition into tddt/trilex.py and use it in tddt/models.py
 spin_names = ('up', 'dn')
 #fops = set(product(spin_names, [0, 1, 2, 3, 4]))
 fops = set(product(spin_names, [0, 1, 2, 3]))
-
-
-# Initial Hamiltonian #TODO: check which parameters to add
-
-
-h0 = -mu * (n('up', 0) + n('dn', 0)) + U * n('up', 0) * n('dn', 0) \
-     +exx * (n('up', 1) + n('dn', 1)) \
-     +ex  * (n('up', 2) + n('dn', 2)) \
-     -exx * (n('up', 3) + n('dn', 3)) \
-
-h0 = h0 + \
-    sum(dt_pos_xx0* c_dag(sn, 0) * c(sn, 1) + dt_neg_xx0* c_dag(sn, 1) * c(sn, 0)
-        for sn in spin_names) + \
-    sum(dt_pos_x0 * c_dag(sn, 0) * c(sn, 2) + dt_neg_x0 * c_dag(sn, 2) * c(sn, 0)
-        for sn in spin_names) + \
-    sum(dt_neg_xx0* c_dag(sn, 0) * c(sn, 3) + dt_pos_xx0* c_dag(sn, 3) * c(sn, 0)
-        for sn in spin_names)
-
-init_state = make_equilibrium_init_state(h0,
-                                         fermion_indices=fops,
-                                         boson_indices=set(),
-                                         temperature=T,
-                                         params={})
 
 
 # Hamiltonian after quench

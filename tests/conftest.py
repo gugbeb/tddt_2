@@ -3,4 +3,5 @@ collect_ignore = []
 try:
     import realevol  # noqa: F401
 except ImportError:
+    collect_ignore.append("test_models.py")
     collect_ignore.append("test_realevol.py")
