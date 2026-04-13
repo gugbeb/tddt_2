@@ -98,16 +98,6 @@ class SquarePlaquette(FiniteSystem):
         self.A = (0.0, 0.0) if (vector_potential is None) \
             else (*vector_potential,)
 
-        # Peierls prefactors
-        self.peierls = np.ones((n_sites, n_sites), dtype=object)
-        Ax, Ay = self.A
-        for (i, ri), (j, rj) in product(enumerate(self.r_mesh), repeat=2):
-            dx, dy = (ri - rj)[:2]
-            self.peierls[i, j] *= ti(Ax.mesh, np.exp(-1j * dx * Ax.data)) \
-                if isinstance(Ax, ti) else np.exp(-1j * dx * Ax)
-            self.peierls[i, j] *= ti(Ay.mesh, np.exp(-1j * dy * Ay.data)) \
-                if isinstance(Ay, ti) else np.exp(-1j * dy * Ay)
-
     @property
     def fops(self):
         "Fundamental operator set of this model"
@@ -123,10 +113,19 @@ class SquarePlaquette(FiniteSystem):
         up, dn = spin_names
         n_sites = len(self.r_mesh)
 
+        Ax, Ay = self.A
+
         h = op.Operator()
         # Hopping
         for (i, ri), (j, rj) in product(enumerate(self.r_mesh), repeat=2):
-            h += sum(self.t[i, j] * self.peierls[i, j]
+            # Compute Peierls prefactor
+            dx, dy = (ri - rj)[:2]
+            peierls = ti(Ax.mesh, np.exp(-1j * dx * Ax.data)) \
+                if isinstance(Ax, ti) else np.exp(-1j * dx * Ax)
+            peierls *= ti(Ay.mesh, np.exp(-1j * dy * Ay.data)) \
+                if isinstance(Ay, ti) else np.exp(-1j * dy * Ay)
+
+            h += sum(self.t[i, j] * peierls
                      * op.c_dag(sn, i) * op.c(sn, j) for sn in spin_names)
 
         # Interaction
