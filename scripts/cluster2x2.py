@@ -7,7 +7,6 @@ from triqs.gf import MeshReTime, Gf
 from triqs.gf import MeshProduct # A direct product of 1D meshes
 
 from realevol.tinterp import TInterp as ti
-from realevol.operators_tinterp import c, c_dag, n
 from realevol.init_state import make_equilibrium_init_state
 from realevol.realevol import compute_expectval
 
@@ -33,6 +32,7 @@ from tddt.keldysh import Singular2PKeldyshGF
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.gf import MeshBrillouinZone
 
+from tddt.lattice import local_part
 from tddt.models import SquarePlaquette
 from tddt.vie2 import solve_vie2
 
@@ -77,7 +77,7 @@ txx = 1.0 * t_nn
 T = 0.0
 
 # Model object
-model = SquarePlaquette(
+model_ref = SquarePlaquette(
     # 2x2 plaquette
     N=2,
     # Hopping matrix
@@ -92,51 +92,48 @@ model = SquarePlaquette(
 )
 
 # Initial thermal state of the reference system
-init_state = model.equilibrium_init_state(T)
+init_state_ref = model_ref.equilibrium_init_state(T)
 
 # Local Hubbard interaction and energy level on site 0 after quench
-model.U[0] = U1
-model.t[0, 0] = -mu1
+model_ref.U[0] = U1
+model_ref.t[0, 0] = -mu1
 
-# TODO
-exit()
+# Reference system GF
+params = {}
+params['verbosity'] = 2
+params['hamiltonian_interpol'] = 'Trapezoid'
+params['lanczos_min_matrix_size'] = 40
+gf_ref = compute_keldysh_gf(model_ref.gf_struct,
+                            init_state_ref,
+                            model_ref.hamiltonian,
+                            t_mesh,
+                            params)
 
-# Model parameters
-#Uch = U/2
-#Usp = -U/2
-Uch = U1/2
-Usp = -U1/2
-t1 =  1.0 #0.25 # nearest neighbor hopping
-t2 =  0.0 # next nearest neighbor hopping
-A = 0.0
-Omega = 4.0
-T = 0.0
-# Ref. Sys  U+3bath ex,+exx,-exx
-A_x = 0.0
-tx = 0.7*t1
-txx= 1.0*t1
-ex=0.0
-exx=3.0
+def write_keldysh_gf_file(filename, g, k_point=None, target_indices=()):
+    """
+    Write (FW, FW) and (FW, BW) components of a 2-point KeldyshGF object to a text file.
+    """
+    FW, BW = Branch
+    t_mesh = g.time_mesh.components[1]
+    t0 = next(iter(t_mesh))
+    with open(filename, 'w') as file:
+        file.write("# Re (FW, FW) Im (FW, FW) Re (FW, BW) Im (FW, BW)\n")
+        for t in t_mesh:
+            mesh_point = (t0, t) if (k_point is None) else (t0, t, k_point)
+            col_data = (g[FW, FW][*mesh_point][*target_indices].real,
+                        g[FW, FW][*mesh_point][*target_indices].imag,
+                        g[FW, BW][*mesh_point][*target_indices].real,
+                        g[FW, BW][*mesh_point][*target_indices].imag)
+            file.write("{} {} {} {}\n".format(*col_data))
 
-# TODO: Move to tddt/dtrilex.py
-class Channel(Enum):
-    "Bosonic channel."
-    CHARGE = 0
-    "Charge channel"
-    SPIN = 1
-    "Spin channel"
+write_keldysh_gf_file('data/tddt_ref_sys_t0_00.txt',
+                      gf_ref['up'], target_indices=(0, 0))
+write_keldysh_gf_file('data/tddt_ref_sys_t0_01.txt',
+                      gf_ref['up'], target_indices=(0, 1))
 
-# time-mesh
-t_max = 3.0 # 10.0 #20.0
-n_t = 51 #21
-t_mesh = MeshReTime(0, t_max, n_t)
-tt_mesh = MeshProduct(t_mesh, t_mesh) # A 2D mesh as a direct product of t_mesh with itself
-ttt_mesh = MeshProduct(t_mesh, t_mesh, t_mesh)
-m_interp = MeshReTime(0, t_max, n_t)
+tt_mesh = MeshProduct(t_mesh, t_mesh)
 
-
-#k-mesh
-# TODO: Remove this group of vars and use model_ref
+# k-mesh
 lat = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # 2D square lattice
 bz = BrillouinZone(lat)  # Brillouin zone of the lattice
 n_k = 2 # Number of k-points along each dimension
@@ -145,125 +142,75 @@ nkx = n_k
 nky = n_k
 nkz = 1
 
-
-#mixed-mesh
+# mixed-mesh
 tk_mesh = MeshProduct(t_mesh, bz_mesh)
 ttk_mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 tttk_mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
 
+# TODO: Move to tddt/dtrilex.py
+#class Channel(Enum):
+#    "Bosonic channel."
+#    CHARGE = 0
+#    "Charge channel"
+#    SPIN = 1
+#    "Spin channel"
 
-# Keldysh branches
-FW = Branch.FORWARD
-BW = Branch.BACKWARD
-
-
-# time dependent hopping for Hamiltonian
-dt_pos = ti(m_interp, np.array([t1*np.exp(1.j * A * np.cos(Omega * x)) for x in m_interp]))
-dt_neg = ti(m_interp, np.array([t1*np.exp(-1.j * A * np.cos(Omega * x)) for x in m_interp]))
-
-# time 0 pos. for Reference System
-dt_pos_x0 = ti(m_interp, np.array([tx for x in m_interp]))
-dt_neg_x0 = ti(m_interp, np.array([tx for x in m_interp]))
-dt_pos_xx0= ti(m_interp, np.array([txx for x in m_interp]))
-dt_neg_xx0= ti(m_interp, np.array([txx for x in m_interp]))
-# time dependent pos. for Reference System
-dt_pos_x = ti(m_interp, np.array([tx*np.exp(1.j * A_x * np.cos(Omega * x)) for x in m_interp]))
-dt_neg_x = ti(m_interp, np.array([tx*np.exp(-1.j * A_x * np.cos(Omega * x)) for x in m_interp]))
-dt_pos_xx= ti(m_interp, np.array([txx*np.exp(1.j * A_x * np.cos(Omega * x)) for x in m_interp]))
-dt_neg_xx= ti(m_interp, np.array([txx*np.exp(-1.j * A_x * np.cos(Omega * x)) for x in m_interp]))
-
+Uch = U/2
+Usp = -U/2
+Uch = U1/2
+Usp = -U1/2
 
 # Lattice dispersion
-eps_tk = Gf(mesh=tk_mesh, target_shape=(2, 2))
+#eps_tk = Gf(mesh=tk_mesh, target_shape=(2, 2))
 
-for t, k in tk_mesh:
-    #eps_tk[t, k] = -2 * np.array([[[1, 0], [0, -1]]]) * np.cos(t.value) * (np.cos(k[0]) + np.cos(k[1]))
-    eps_tk[t, k][0, 0] = 2.0*t1*(np.cos(k[0]-A*np.cos(Omega * t.value))+np.cos(k[1]-A*np.cos(Omega * t.value))) \
-                         +4.0*t2*np.cos(2*(k[0]-A*np.cos(Omega * t.value)))*np.cos(2*(k[1]-A*np.cos(Omega * t.value)))
-    eps_tk[t, k][1, 1] = 2.0*t1*(np.cos(k[0]-A*np.cos(Omega * t.value))+np.cos(k[1]-A*np.cos(Omega * t.value))) \
-                         +4.0*t2*np.cos(2*(k[0]-A*np.cos(Omega * t.value)))*np.cos(2*(k[1]-A*np.cos(Omega * t.value)))
+#for t, k in tk_mesh:
+#    #eps_tk[t, k] = -2 * np.array([[[1, 0], [0, -1]]]) * np.cos(t.value) * (np.cos(k[0]) + np.cos(k[1]))
+#    eps_tk[t, k][0, 0] = 2.0*t1*(np.cos(k[0]-A*np.cos(Omega * t.value))+np.cos(k[1]-A*np.cos(Omega * t.value))) \
+#                         +4.0*t2*np.cos(2*(k[0]-A*np.cos(Omega * t.value)))*np.cos(2*(k[1]-A*np.cos(Omega * t.value)))
+#    eps_tk[t, k][1, 1] = 2.0*t1*(np.cos(k[0]-A*np.cos(Omega * t.value))+np.cos(k[1]-A*np.cos(Omega * t.value))) \
+#                         +4.0*t2*np.cos(2*(k[0]-A*np.cos(Omega * t.value)))*np.cos(2*(k[1]-A*np.cos(Omega * t.value)))
 
-eps_loc = np.mean(eps_tk.data, axis = 1)
+#eps_loc = np.mean(eps_tk.data, axis = 1)
 
-for t, k in tk_mesh:
-    eps_tk[t, k] = eps_tk[t, k] - eps_loc[t.index, :]
+#for t, k in tk_mesh:
+#    eps_tk[t, k] = eps_tk[t, k] - eps_loc[t.index, :]
 
-eps_s2p_K = Singular2PKeldyshGF.from_retime(eps_tk)
+#eps_s2p_K = Singular2PKeldyshGF.from_retime(eps_tk)
 
 
 # Dispersion reference system
 #TODO: compare to dt_pos/ dt_neg
-def V(tx2, axis, sign, t):
-    """ axis = x,y
-        sign = -1,+1
-        tx2  = tx,txx
-    """
-    V = tx2 * np.exp(sign * 1.j * A * np.cos(Omega * t))
-    return V
-for i in t_mesh:
-    print(V(tx,'x', +1, i))
+#def V(tx2, axis, sign, t):
+#    """ axis = x,y
+#        sign = -1,+1
+#        tx2  = tx,txx
+#    """
+#    V = tx2 * np.exp(sign * 1.j * A * np.cos(Omega * t))
+#    return V
+#for i in t_mesh:
+#    print(V(tx,'x', +1, i))
 
 # Non-local interaction
-def Vq(k, channel):
-    Vq = 0.0
-    return Vq
+#def Vq(k, channel):
+#    Vq = 0.0
+#    return Vq
 
 
 # Bare lattice interaction
-Uq = Gf(mesh=tk_mesh, target_shape=(2, 2))
-Uq_tilde = Gf(mesh=tk_mesh, target_shape=(2, 2))
+#Uq = Gf(mesh=tk_mesh, target_shape=(2, 2))
+#Uq_tilde = Gf(mesh=tk_mesh, target_shape=(2, 2))
 
-for t, k in tk_mesh:
-    Uq[t, k][0,0] = Uch + Vq(k, 0) # charge
-    Uq[t, k][1,1] = Usp + Vq(k, 1) # spin
-    Uq_tilde[t, k][0,0] = Uq[t, k][0,0] - 0.5*Uch
-    Uq_tilde[t, k][1,1] = Uq[t, k][1,1] - 0.5*Usp
+#for t, k in tk_mesh:
+#    Uq[t, k][0,0] = Uch + Vq(k, 0) # charge
+#    Uq[t, k][1,1] = Usp + Vq(k, 1) # spin
+#    Uq_tilde[t, k][0,0] = Uq[t, k][0,0] - 0.5*Uch
+#    Uq_tilde[t, k][1,1] = Uq[t, k][1,1] - 0.5*Usp
 
-Uq_s2p_K = Singular2PKeldyshGF.from_retime(Uq)
-Uq_tilde_s2p_K = Singular2PKeldyshGF.from_retime(Uq_tilde)
-
-
-# fermionic operators for the reference problem
-# TODO: Move this definition into tddt/trilex.py and use it in tddt/models.py
-spin_names = ('up', 'dn')
-#fops = set(product(spin_names, [0, 1, 2, 3, 4]))
-fops = set(product(spin_names, [0, 1, 2, 3]))
-
-
-# Hamiltonian after quench
-h  = -mu1* (n('up', 0) + n('dn', 0)) + U1* n('up', 0) * n('dn', 0) \
-     +exx * (n('up', 1) + n('dn', 1)) \
-     +ex  * (n('up', 2) + n('dn', 2)) \
-     -exx * (n('up', 3) + n('dn', 3)) \
-
-h  = h  + \
-    sum(dt_pos_xx* c_dag(sn, 0) * c(sn, 1) + dt_neg_xx* c_dag(sn, 1) * c(sn, 0)
-        for sn in spin_names) + \
-    sum(dt_pos_x * c_dag(sn, 0) * c(sn, 2) + dt_neg_x * c_dag(sn, 2) * c(sn, 0)
-        for sn in spin_names) + \
-    sum(dt_neg_xx* c_dag(sn, 0) * c(sn, 3) + dt_pos_xx* c_dag(sn, 3) * c(sn, 0)
-        for sn in spin_names)
-
-params = {}
-params['verbosity'] = 2                      # Verbosity level
-params['hbar'] = 1.0                         # Planck's constant
-params['hamiltonian_interpol'] = 'Trapezoid' # Trapezoid rule interpolation of H(t)
-params['lanczos_min_matrix_size'] = 40       # Use LAPACK for subspaces of dim 32 and smaller
-
-
-
-# Reference System GF
-gf_struct_ref = [('up', 4), ('dn', 4)]
-gf_ref = compute_keldysh_gf(gf_struct_ref,
-                        init_state,
-                        h,
-                        t_mesh,
-                        params)
-
+#Uq_s2p_K = Singular2PKeldyshGF.from_retime(Uq)
+#Uq_tilde_s2p_K = Singular2PKeldyshGF.from_retime(Uq_tilde)
 
 # Make Keldysh GF of a single fermion with energy `eps` and occupation number `occup_n`
 def make_g(eps, occup_n, t_mesh):
-    tt_mesh = tt_mesh
     g_l = Gf(mesh=tt_mesh, target_shape=(1, 1))
     g_g = Gf(mesh=tt_mesh, target_shape=(1, 1))
     for time1, time2 in tt_mesh:
@@ -294,22 +241,6 @@ for br1, br2 in product(Branch, Branch):
     for i in range(4): # sites
         gref[br1,br2].data[...,0,i,0,i] = gf_ref['up'][br1,br2].data[...,i,i]
         gref[br1,br2].data[...,1,i,1,i] = gf_ref['dn'][br1,br2].data[...,i,i]
-
-with open('data/tddt_ref_sys_t0_loc.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(gf_ref['up'][FW,FW].data[0,t.index,0,0].real, gf_ref['up'][FW,FW].data[0,t.index,0,0].imag,
-                                          gf_ref['up'][FW,BW].data[0,t.index,0,0].real, gf_ref['up'][FW,BW].data[0,t.index,0,0].imag))
-
-with open('data/tddt_ref_sys_01.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(gf_ref['up'][FW,FW].data[0,t.index,0,1].real, gf_ref['up'][FW,FW].data[0,t.index,0,1].imag,
-                                          gf_ref['up'][FW,BW].data[0,t.index,0,1].real, gf_ref['up'][FW,BW].data[0,t.index,0,1].imag))
 
 
 # Hybridisation function delta and Dual_reg GF0
@@ -350,12 +281,9 @@ for br1, br2 in product(Branch, Branch):
 #  Test print
 Q_herm = 0.5 * (Q - herm_conj(Q))
 
-with open('data/Qherm.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        file.write("{} {} {} {}\n".format(np.sum(Q[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(Q[FW,BW].data[0,t.index,:,0,0].imag)/4.0,
-                                          np.sum(Q_herm[BW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(Q_herm[BW,FW].data[0,t.index,:,0,0].imag)/4.0))
+write_keldysh_gf_file("data/Q.txt", local_part(Q), target_indices=(0, 0))
+write_keldysh_gf_file("data/Qherm.txt", local_part(Q_herm), target_indices=(0, 0))
+
 Q = 0.5 * (Q + herm_conj(Q)) # for now to circumvent the hermicity check !!!!
 
 
@@ -488,7 +416,7 @@ for time in t_mesh:
             eps_s2p_R[br].data[time.linear_index,:,sigm,sigm] = np.fft.ifftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k -> R
             eps_s2p_mR[br].data[time.linear_index,:,sigm,sigm] = np.fft.fftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k+q -> mR
 
-print(eps_s2p_R[FW].data[0,:,0,0].reshape(nkx,nky,nkz))
+print(eps_s2p_R[Branch.FORWARD].data[0,:,0,0].reshape(nkx,nky,nkz))
 
 k_points = list(bz_mesh)
 q0 = k_points[0]
@@ -745,78 +673,27 @@ for time1, time2 in tt_mesh:
             Gd0_full_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_full_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
 
 
-with open('data/tddt_Gd0_R.txt', 'w') as file:
-    # Loop to generate data
-    for t in t_mesh:
-        # Write data to the first and second columns
-        file.write("{} {} {} {}\n".format(Gd0_full_R[FW,BW].data[0,t.index,0,0,0].real, Gd0_full_R[FW,BW].data[0,t.index,0,0,0].imag, Gd0_full_R[FW,BW].data[0,t.index,1,0,0].real, Gd0_full_R[FW,BW].data[0,t.index,1,0,0].imag))
+k0 = list(bz_mesh)[0]
+k1 = list(bz_mesh)[1]
+write_keldysh_gf_file("data/tddt_Gd0_R_k0.txt",
+                      Gd0_full_R, k_point=k0, target_indices=(0, 0))
+write_keldysh_gf_file("data/tddt_Gd0_R_k1.txt",
+                      Gd0_full_R, k_point=k1, target_indices=(0, 0))
 
+write_keldysh_gf_file("data/tddt_t0_loc.txt",
+                      local_part(G_latt), target_indices=(0, 0))
+write_keldysh_gf_file("data/tddt_CPT.txt",
+                      local_part(G_latt_CPT), target_indices=(0, 0))
+write_keldysh_gf_file("data/K.txt", local_part(K), target_indices=(0, 0))
+write_keldysh_gf_file("data/sigma_dual.txt",
+                      local_part(sigma_dual_full), target_indices=(0, 0))
+write_keldysh_gf_file("data/tddt_01.txt",
+                      G_latt_R, k_point=k1, target_indices=(0, 0))
+write_keldysh_gf_file("data/tddt_CPT_01.txt",
+                      G_latt_CPT_R, k_point=k1, target_indices=(0, 0))
 
-with open('data/tddt_t0_loc.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(G_latt[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(G_latt[FW,FW].data[0,t.index,:,0,0].imag)/4.0,
-                                          np.sum(G_latt[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(G_latt[FW,BW].data[0,t.index,:,0,0].imag)/4.0))
-
-with open('data/tddt_CPT.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(G_latt_CPT[FW,FW].data[0,t.index,:,0].real)/4.0, np.sum(G_latt_CPT[FW,FW].data[0,t.index,:,0].imag)/4.0,
-                                          np.sum(G_latt_CPT[FW,BW].data[0,t.index,:,0].real)/4.0, np.sum(G_latt_CPT[FW,BW].data[0,t.index,:,0].imag)/4.0))
-
-with open('data/K.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(K[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(K[FW,FW].data[0,t.index,:,0,0].imag)/4.0,
-                                          np.sum(K[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(K[FW,BW].data[0,t.index,:,0,0].imag)/4.0))
-
-with open('data/sigma_dual.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(np.sum(sigma_dual_full[FW,FW].data[0,t.index,:,0,0].real)/4.0, np.sum(sigma_dual_full[FW,FW].data[0,t.index,:,0,0].imag)/4.0,
-                                          np.sum(sigma_dual_full[FW,BW].data[0,t.index,:,0,0].real)/4.0, np.sum(sigma_dual_full[FW,BW].data[0,t.index,:,0,0].imag)/4.0))
-
-for k in range(4):
-    with open(f"data/tddt_CPT_k{k}.txt", 'w') as file:
-        # Loop to generate data
-        for t in t_mesh:
-            # Write data to the first and second columns
-            file.write("{} {} {} {}\n".format(G_latt_CPT[FW,FW].data[0,t.index,k,0,0].real,
-                                              G_latt_CPT[FW,FW].data[0,t.index,k,0,0].imag,
-                                              G_latt_CPT[FW,BW].data[0,t.index,k,0,0].real,
-                                              G_latt_CPT[FW,BW].data[0,t.index,k,0,0].imag))
-
-with open('data/tddt_01.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(G_latt_R[FW,FW].data[0,t.index,1,0,0].real, G_latt_R[FW,FW].data[0,t.index,1,0,0].imag,
-                                          G_latt_R[FW,BW].data[0,t.index,1,0,0].real, G_latt_R[FW,BW].data[0,t.index,1,0,0].imag))
-
-with open('data/tddt_CPT_01.txt', 'w') as file:
-    # Loop to generate data
-    file.write(f"# (FW,BW).local (FW,BW).local)\n")
-    for t in t_mesh:
-        # Write data to the first and second columnu
-        file.write("{} {} {} {}\n".format(G_latt_CPT_R[FW,FW].data[0,t.index,1,0,0].real, G_latt_CPT_R[FW,FW].data[0,t.index,1,0,0].imag,
-                                          G_latt_CPT_R[FW,BW].data[0,t.index,1,0,0].real, G_latt_CPT_R[FW,BW].data[0,t.index,1,0,0].imag))
-
-
-for k in range(4):
-    with open(f"data/tddt_T_t0_k{k}.txt", 'w') as file:
-        # Loop to generate data
-        for t in t_mesh:
-            # Write data to the first and second columns
-            file.write("{} {} {} {}\n".format(G_latt[FW,FW].data[0,t.index,k,0,0].real,
-                                              G_latt[FW,FW].data[0,t.index,k,0,0].imag,
-                                              G_latt[FW,BW].data[0,t.index,k,0,0].real,
-                                              G_latt[FW,BW].data[0,t.index,k,0,0].imag))
+for ki, k in enumerate(bz_mesh):
+    write_keldysh_gf_file(f"data/tddt_CPT_k{ki}.txt",
+                          G_latt_CPT, k_point=k, target_indices=(0, 0))
+    write_keldysh_gf_file(f"data/tddt_T_t0_k{ki}.txt",
+                          G_latt, k_point=k, target_indices=(0, 0))
