@@ -2,6 +2,8 @@
 # Utilities
 #
 
+import numpy as np
+
 """Lists of subscripts for numpy.einsum()"""
 subscripts = {'time': "abcdefgh",
               'nontime': "ABCDEFGH",
@@ -38,3 +40,15 @@ def make_conv_nontime_einsum_subscripts(a_nt_mesh_comps, b_nt_mesh_comps):
         subs_b_nt = ss
         subs_res_nt += ss
         return subs_a_nt, subs_b_nt, subs_res_nt
+
+
+def fermi(x):
+    """
+    Fermi step function 1 / (1 + exp(x)) evaluated so that overflows are avoided
+    for both positive and negative 'x'.
+    """
+    if x < 0:
+        return 1.0 / (1.0 + np.exp(x))
+    else:
+        ex = np.exp(-x)
+        return ex / (1.0 + ex)
