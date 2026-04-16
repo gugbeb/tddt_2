@@ -3,20 +3,89 @@
 #
 
 from itertools import product
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Callable
 
 import numpy as np
 
-from triqs.gf import MeshCycLat, MeshBrZone
+from triqs.gf import Gf, MeshReTime, MeshCycLat, MeshBrZone, MeshProduct
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from realevol.tinterp import TInterp as ti
 import realevol.operators_tinterp as op
 from realevol.init_state import make_equilibrium_init_state
 
+from .keldysh import KeldyshGF
+from .util import fermi
+
 
 spin_names = ('up', 'dn')
 "Names of two spin projections of an electron"
+
+
+class SingleFermion:
+    "Single fermionic degree of freedom with a given energy"
+
+    def __init__(self, eps: float):
+        "Construct a single fermion state with energy 'eps'."
+        self.eps = eps
+
+    def gf(self, t_mesh: MeshReTime, /,
+           n: Optional[float] = None, T: Optional[float] = None):
+        """
+        Single-particle Green's function computed either for a fixed occupation
+        'n' or at a fixed temperature 'T'. These two keyword arguments are
+        mutually exclusive.
+        """
+        assert (n is None) ^ (T is None), \
+            "Exactly one of 'n' and 'T' must be specified"
+
+        tt_mesh = MeshProduct(t_mesh, t_mesh)
+        g_l = Gf(mesh=tt_mesh, target_shape=())
+        g_g = Gf(mesh=tt_mesh, target_shape=())
+
+        occ = n if (n is not None) else fermi(self.eps / T)
+
+        for time1, time2 in tt_mesh:
+            ex = np.exp(-1j * self.eps * (time1 - time2))
+            g_g[time1, time2] = -1j * (1.0 - occ) * ex
+            g_l[time1, time2] = -1j * (-occ) * ex
+        return KeldyshGF.from_lesser_greater(g_l, g_g)
+
+
+class FermionBand:
+    "Fermionic states forming a single band"
+
+    def __init__(self, bz_mesh: MeshBrZone, eps_k: Callable):
+        """
+        Construct a band of fermionic states with dispersion law given by
+        the function 'eps_k'.
+        """
+        self.bz_mesh = bz_mesh
+        self.eps_k = eps_k
+
+    def gf(self, t_mesh: MeshReTime, /,
+           n_k: Optional[float] = None, T: Optional[float] = None):
+        """
+        Single-particle Green's function computed either for a fixed k-dependent
+        occupation 'n_k' or at a fixed temperature 'T'. These two keyword
+        arguments are mutually exclusive.
+        """
+        assert (n_k is None) ^ (T is None), \
+            "Exactly one of 'n_k' and 'T' must be specified"
+
+        tt_mesh = MeshProduct(t_mesh, t_mesh)
+        ttk_mesh = MeshProduct(t_mesh, t_mesh, self.bz_mesh)
+        g_l = Gf(mesh=ttk_mesh, target_shape=())
+        g_g = Gf(mesh=ttk_mesh, target_shape=())
+
+        for k in self.bz_mesh:
+            eps_k = self.eps_k(k)
+            occ_k = n_k(k) if (n_k is not None) else fermi(eps_k / T)
+            for time1, time2 in tt_mesh:
+                ex = np.exp(-1j * eps_k * (time1 - time2))
+                g_g[time1, time2, k] = -1j * (1.0 - occ_k) * ex
+                g_l[time1, time2, k] = -1j * (-occ_k) * ex
+        return KeldyshGF.from_lesser_greater(g_l, g_g)
 
 
 class FiniteSystem:

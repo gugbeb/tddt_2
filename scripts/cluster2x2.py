@@ -33,7 +33,7 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.gf import MeshBrillouinZone
 
 from tddt.lattice import local_part
-from tddt.models import SquarePlaquette
+from tddt.models import SingleFermion, SquarePlaquette
 from tddt.vie2 import solve_vie2
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
@@ -209,31 +209,13 @@ Usp = -U1/2
 #Uq_s2p_K = Singular2PKeldyshGF.from_retime(Uq)
 #Uq_tilde_s2p_K = Singular2PKeldyshGF.from_retime(Uq_tilde)
 
-# Make Keldysh GF of a single fermion with energy `eps` and occupation number `occup_n`
-def make_g(eps, occup_n, t_mesh):
-    g_l = Gf(mesh=tt_mesh, target_shape=(1, 1))
-    g_g = Gf(mesh=tt_mesh, target_shape=(1, 1))
-    for time1, time2 in tt_mesh:
-        g_g[time1, time2] = -1j * (1.0 - occup_n) * np.exp(-1j * eps * (time1 - time2))
-        g_l[time1, time2] = -1j * (-occup_n) * np.exp(-1j * eps * (time1 - time2))
-    return KeldyshGF.from_lesser_greater(g_l, g_g)
-
-
-occup_n = 0.5
-# Bare impurity GF for 3 bath cites
-eps = ex
-gimp0 = make_g(eps, occup_n, t_mesh)
-occup_n = 0.1
-eps = exx
-gimp0p = make_g(eps, occup_n, t_mesh)
-occup_n = 0.9
-eps =-exx
-gimp0m = make_g(eps, occup_n, t_mesh)
-print(gimp0.arg_index_shapes)
+# Bare impurity GF for 3 bath sites
+gimp0 = SingleFermion(ex).gf(t_mesh, n=0.5)
+gimp0p = SingleFermion(exx).gf(t_mesh, n=0.1)
+gimp0m = SingleFermion(-exx).gf(t_mesh, n=0.9)
 
 gimp = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,))) # GF for site 0 of the reference system
 gref = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,4), (2,4))) # time, time, spin, site, spin, site for example: (11, 11, 2, 5, 2, 5)
-
 
 for br1, br2 in product(Branch, Branch):
     gimp[br1,br2][0,0].data[...] = gf_ref['up'][br1,br2].data[...,0,0]
@@ -252,10 +234,10 @@ for sp in (0,1):
             z1 = ContourPoint(br1, time1)
             z2 = ContourPoint(br2, time2)
             print('V: ', V(tx,  'x',+1,time1.linear_index))
-            print('gimp0: ', gimp0[z1,z2][0,0])
-            delta[z1,z2][sp,sp] = V(tx,'x',+1,time1.linear_index) * gimp0[z1,z2][0,0] * V(tx,'x',-1,time2.linear_index) \
-                                    + V(txx,'x',+1,time1.linear_index) * gimp0p[z1,z2][0,0] * V(txx,'x',-1,time2.linear_index) \
-                                    + V(txx,'x',-1,time1.linear_index) * gimp0m[z1,z2][0,0] * V(txx,'x',+1,time2.linear_index)
+            print('gimp0: ', gimp0[z1,z2])
+            delta[z1,z2][sp,sp] = V(tx,'x',+1,time1.linear_index) * gimp0[z1,z2] * V(tx,'x',-1,time2.linear_index) \
+                                    + V(txx,'x',+1,time1.linear_index) * gimp0p[z1,z2] * V(txx,'x',-1,time2.linear_index) \
+                                    + V(txx,'x',-1,time1.linear_index) * gimp0m[z1,z2] * V(txx,'x',+1,time2.linear_index)
 
 
 eps_gimp = eps_s2p_K @ gimp
