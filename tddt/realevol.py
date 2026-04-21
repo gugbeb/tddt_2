@@ -181,6 +181,6 @@ def compute_keldysh_vertex3(c_indices,
                 - n_op_aver[t3] * (c_dag_c_aver[t2, t1]
                                    if c_c_dag_swapped else
                                    c_c_dag_aver[t1, t2])
-            G_out *= -1 * (-1 if c_c_dag_swapped else 1)
+        G_out *= -1 * (-1 if c_c_dag_swapped else 1)
 
     return KeldyshGF.from_vertex3_pieces(G)
