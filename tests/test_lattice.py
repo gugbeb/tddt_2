@@ -2,11 +2,11 @@ import unittest
 from itertools import product
 import numpy as np
 
-from triqs.gf import MeshReTime, MeshCycLat, MeshBrZone, MeshProduct
+from triqs.gf import MeshReTime, MeshReFreq, MeshCycLat, MeshBrZone, MeshProduct
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF, Singular2PKeldyshGF
-from tddt.lattice import local_part
+from tddt.lattice import local_part, SpacialArgs, lattice_fourier
 from tddt.testing import (assert_keldysh_gf_almost_equal,
                           assert_singular_2p_keldysh_gf_almost_equal)
 
@@ -67,6 +67,118 @@ class TestLattice(unittest.TestCase):
         assert_singular_2p_keldysh_gf_almost_equal(local_part(g),
                                                    g_loc_ref,
                                                    1e-10)
+
+    def test_lattice_fourier_no_spacial(self):
+        t_mesh = MeshReTime(0.0, 10.0, 5)
+        w_mesh = MeshReFreq((-2, 2), 11)
+
+        # Gf without spacial meshes
+        mesh = MeshProduct(t_mesh, t_mesh, w_mesh)
+        g = KeldyshGF(mesh=mesh, target_shape=(2, 3))
+        g_s2p = Singular2PKeldyshGF(mesh=mesh, target_shape=(2, 3))
+        for br in product(Branch, repeat=2):
+            g_br = g[br]
+            g_br.data[:] = np.arange(g_br.data.size).reshape(g_br.data.shape)
+        for br in Branch:
+            g_br = g_s2p[br]
+            g_br.data[:] = np.arange(g_br.data.size).reshape(g_br.data.shape)
+
+        for apply_to in SpacialArgs:
+            assert_keldysh_gf_almost_equal(
+                lattice_fourier(g, apply_to=apply_to), g, 1e-10
+            )
+            assert_singular_2p_keldysh_gf_almost_equal(
+                lattice_fourier(g_s2p, apply_to=apply_to), g_s2p, 1e-10
+            )
+
+    def test_lattice_fourier(self):
+        n_k = (4, 5, 1)
+        n_r = (6, 7, 1)
+        n_t = 3
+        n_w = 4
+
+        t_mesh = MeshReTime(0.0, 10.0, n_t)
+        w_mesh = MeshReFreq((-2, 2), n_w)
+
+        bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # Square lattice
+        k_mesh = MeshBrZone(BrillouinZone(bl), n_k)
+        r_mesh = MeshCycLat(bl, n_r)
+
+        mesh = MeshProduct(t_mesh, t_mesh, k_mesh, w_mesh, r_mesh)
+        g = KeldyshGF(mesh=mesh, target_shape=(2, 1))
+
+        def theta(t1, t2):
+            return float(t1.value >= t2.value)
+
+        def n(w):
+            return 1 / (1 + np.exp(w.value))
+
+        def eps(k):
+            return np.cos(k[0]) + np.cos(k[1]) \
+                - 0.25 * np.cos(k[0]) * np.cos(k[1])
+
+        for br in product(Branch, repeat=2):
+            start = br[0].value + br[1].value
+            target = np.arange(start, start + 2).reshape(2, 1)
+            for t1, t2, k, w, r in g.mesh:
+                g[br][t1, t2, k, w, r] = -1j * target * (theta(t1, t2) - n(w)) \
+                    * np.exp(-1j * eps(k) * (t1.value - t2.value)) \
+                    * np.exp(-0.5 * (r[0] + 0.8 * r[1]) ** 2)
+
+        target_tmp = np.zeros(target.shape, dtype=complex)
+
+        # apply_to == SpacialArgs.BRZONE
+        mesh1 = MeshProduct(t_mesh, t_mesh, MeshCycLat(bl, n_k), w_mesh, r_mesh)
+        g1_ref = KeldyshGF(mesh=mesh1, target_shape=(2, 1))
+        for br in product(Branch, repeat=2):
+            start = br[0].value + br[1].value
+            target = np.arange(start, start + 2).reshape(2, 1)
+            for t1, t2, rp, w, r in g1_ref.mesh:
+                target_tmp[...] = 0
+                for k in k_mesh:
+                    target_tmp[...] += g[br][t1, t2, k, w, r] \
+                        * np.exp(-1j * (rp[0] * k[0] + rp[1] * k[1]))
+                target_tmp /= np.prod(n_k)
+                g1_ref[br][t1, t2, rp, w, r] = target_tmp
+        assert_keldysh_gf_almost_equal(
+            lattice_fourier(g, apply_to=SpacialArgs.BRZONE), g1_ref, 1e-10
+        )
+
+        # apply_to == SpacialArgs.LATTICE
+        mesh2 = MeshProduct(t_mesh, t_mesh, k_mesh, w_mesh,
+                            MeshBrZone(BrillouinZone(bl), n_r))
+        g2_ref = KeldyshGF(mesh=mesh2, target_shape=(2, 1))
+        for br in product(Branch, repeat=2):
+            start = br[0].value + br[1].value
+            target = np.arange(start, start + 2).reshape(2, 1)
+            for t1, t2, k, w, kp in g2_ref.mesh:
+                target_tmp[...] = 0
+                for r in r_mesh:
+                    target_tmp[...] += g[br][t1, t2, k, w, r] \
+                        * np.exp(1j * (r[0] * kp[0] + r[1] * kp[1]))
+                g2_ref[br][t1, t2, k, w, kp] = target_tmp
+        assert_keldysh_gf_almost_equal(
+            lattice_fourier(g, apply_to=SpacialArgs.LATTICE), g2_ref, 1e-10
+        )
+
+        # apply_to = SpacialArgs.BOTH
+        mesh3 = MeshProduct(t_mesh, t_mesh,
+                            MeshCycLat(bl, n_k),
+                            w_mesh,
+                            MeshBrZone(BrillouinZone(bl), n_r))
+        g3_ref = KeldyshGF(mesh=mesh3, target_shape=(2, 1))
+        for br in product(Branch, repeat=2):
+            start = br[0].value + br[1].value
+            target = np.arange(start, start + 2).reshape(2, 1)
+            for t1, t2, rp, w, kp in g3_ref.mesh:
+                target_tmp[...] = 0
+                for r in r_mesh:
+                    target_tmp[...] += g1_ref[br][t1, t2, rp, w, r] \
+                        * np.exp(1j * (r[0] * kp[0] + r[1] * kp[1]))
+                g3_ref[br][t1, t2, rp, w, kp] = target_tmp
+        assert_keldysh_gf_almost_equal(
+            lattice_fourier(g, apply_to=SpacialArgs.BOTH), g3_ref, 1e-10
+        )
 
 
 if __name__ == '__main__':

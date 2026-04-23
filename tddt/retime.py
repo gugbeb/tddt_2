@@ -174,6 +174,7 @@ def conv_ret_ret(a_ret: Gf,
 
     # Implements a workaround for https://github.com/numpy/numpy/issues/31350
     is_numpy1 = np.version.version[:2] == '1.'
+
     def take_data_slice(d, n, m):
         if is_numpy1:
             return d[n, m, ...]
