@@ -208,13 +208,13 @@ class TestKeldyshGF(unittest.TestCase):
         g_ret = g.retarded()
         for p in g_ret.mesh:
             t0, t1 = p[0], p[1]
-            ref = g21[p] - g12[p] if t0.linear_index >= t1.linear_index else 0
+            ref = g21[p] - g12[p] if t0.data_index >= t1.data_index else 0
             assert_array_equal(g_ret[p], ref)
         # Advanced component
         g_adv = g.advanced()
         for p in g_adv.mesh:
             t0, t1 = p[0], p[1]
-            ref = g12[p] - g21[p] if t0.linear_index <= t1.linear_index else 0
+            ref = g12[p] - g21[p] if t0.data_index <= t1.data_index else 0
             assert_array_equal(g_adv[p], ref)
         # Extended retarded component
         g_ret_ext = g.retarded_ext()
@@ -228,21 +228,21 @@ class TestKeldyshGF(unittest.TestCase):
         non_t_shape = tuple(len(m) for m in g.mesh.components[2:]) \
             + g.target_shape
 
-        t_mesh = MeshReTime(0, 6.0, 7)
-        t = next(iter(t_mesh))
+        t1 = next(iter(g.time_mesh.components[0]))
+        t2 = next(iter(g.time_mesh.components[1]))
 
         if len(g.mesh.components) == 2:
-            g[CP(BW, t), CP(FW, t)] = 3.0
+            g[CP(BW, t1), CP(FW, t2)] = 3.0
         else:
-            g[CP(BW, t), CP(FW, t)] = Function(lambda i: 3.0)
-        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+            g[CP(BW, t1), CP(FW, t2)] = Function(lambda i: 3.0)
+        assert_array_equal(g[CP(BW, t1), CP(FW, t2)].data,
                            3.0 * np.ones(non_t_shape))
 
         if len(g.mesh.components) == 2:
-            g[BW, FW, t, t] = 4.0
+            g[BW, FW, t1, t2] = 4.0
         else:
-            g[BW, FW, t, t, :] = Function(lambda i: 4.0)
-        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+            g[BW, FW, t1, t2, :] = Function(lambda i: 4.0)
+        assert_array_equal(g[CP(BW, t1), CP(FW, t2)].data,
                            4.0 * np.ones(non_t_shape))
 
         g[BW, FW].data[:] = 2 * np.ones((7, 8, *non_t_shape))
@@ -250,25 +250,25 @@ class TestKeldyshGF(unittest.TestCase):
 
         # Multiplication by a scalar
         g *= 3
-        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+        assert_array_equal(g[CP(BW, t1), CP(FW, t2)].data,
                            6.0 * np.ones(non_t_shape))
 
         # Addition
         g += g
-        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+        assert_array_equal(g[CP(BW, t1), CP(FW, t2)].data,
                            12.0 * np.ones(non_t_shape))
-        assert_array_equal((g + g)[CP(BW, t), CP(FW, t)].data,
+        assert_array_equal((g + g)[CP(BW, t1), CP(FW, t2)].data,
                            24.0 * np.ones(non_t_shape))
 
         # Subtraction
         g -= 0.5 * g
-        assert_array_equal(g[CP(BW, t), CP(FW, t)].data,
+        assert_array_equal(g[CP(BW, t1), CP(FW, t2)].data,
                            6.0 * np.ones(non_t_shape))
-        assert_array_equal((g - g)[CP(BW, t), CP(FW, t)].data,
+        assert_array_equal((g - g)[CP(BW, t1), CP(FW, t2)].data,
                            0.0 * np.ones(non_t_shape))
 
         # Unary minus
-        assert_array_equal((-g)[CP(BW, t), CP(FW, t)].data,
+        assert_array_equal((-g)[CP(BW, t1), CP(FW, t2)].data,
                            -6.0 * np.ones(non_t_shape))
 
         # Equality
@@ -276,17 +276,26 @@ class TestKeldyshGF(unittest.TestCase):
 
     def test_n_args1(self):
         t_mesh = MeshReTime(0, 6.0, 7)
-        for mesh in (t_mesh, MeshProduct(t_mesh)):
-            g = KeldyshGF(mesh=mesh, arg_index_shapes=((3,),))
 
-            self.assertEqual(g.mesh, MeshProduct(t_mesh))
-            self.assertEqual(g.time_mesh, MeshProduct(t_mesh))
-            self.assertEqual(g.non_time_mesh, MeshProduct())
-            self.assertEqual(g.n_args, 1)
-            self.assertEqual(g.components.shape, (2,))
+        g1 = KeldyshGF(mesh=t_mesh, arg_index_shapes=((3,),))
 
-            t0, t1 = list(t_mesh)[:2]
+        self.assertEqual(g1.mesh, t_mesh)
+        self.assertEqual(g1.time_mesh, MeshProduct(t_mesh))
+        self.assertEqual(g1.non_time_mesh, MeshProduct())
+        self.assertEqual(g1.n_args, 1)
+        self.assertEqual(g1.components.shape, (2,))
 
+        gp1 = KeldyshGF(mesh=MeshProduct(t_mesh), arg_index_shapes=((3,),))
+
+        self.assertEqual(gp1.mesh, MeshProduct(t_mesh))
+        self.assertEqual(gp1.time_mesh, MeshProduct(t_mesh))
+        self.assertEqual(gp1.non_time_mesh, MeshProduct())
+        self.assertEqual(gp1.n_args, 1)
+        self.assertEqual(gp1.components.shape, (2,))
+
+        t0, t1 = list(t_mesh)[:2]
+
+        for g in (g1, gp1):
             # __getitem__()
             g.components[1].data[:] = 2.0
             assert_array_equal(g[Branch.BACKWARD].data, 2.0 * np.ones((7, 3)))
@@ -901,10 +910,12 @@ class TestKeldyshGF(unittest.TestCase):
                 self.assertNotEqual(Lambda[CP(a0, t0), CP(a1, t1), CP(a2, t2)],
                                     0)
 
-        t = next(iter(t_mesh1))
+        t1 = next(iter(t_mesh1))
+        t2 = next(iter(t_mesh2))
+        t3 = next(iter(t_mesh3))
 
-        Lambda[CP(BW, t), CP(FW, t), CP(BW, t)] = 3.0
-        self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 3.0)
+        Lambda[CP(BW, t1), CP(FW, t2), CP(BW, t3)] = 3.0
+        self.assertEqual(Lambda[CP(BW, t1), CP(FW, t2), CP(BW, t3)], 3.0)
 
         ones_time_mat = np.ones((7, 8, 9))
         Lambda[BW, FW, BW].data[:] = 2 * ones_time_mat
@@ -912,24 +923,26 @@ class TestKeldyshGF(unittest.TestCase):
 
         # Multiplication by a scalar
         Lambda *= 3
-        self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 6.0)
-        self.assertEqual((Lambda * 2.0)[CP(BW, t), CP(FW, t), CP(BW, t)], 12.0)
-        self.assertEqual((2.0 * Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)], 12.0)
+        self.assertEqual(Lambda[CP(BW, t1), CP(FW, t2), CP(BW, t3)], 6.0)
+        self.assertEqual((Lambda * 2.0)[CP(BW, t1), CP(FW, t2), CP(BW, t3)],
+                         12.0)
+        self.assertEqual((2.0 * Lambda)[CP(BW, t1), CP(FW, t2), CP(BW, t3)],
+                         12.0)
 
         # Addition
         Lambda += Lambda
-        self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 12.0)
-        self.assertEqual((Lambda + Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)],
+        self.assertEqual(Lambda[CP(BW, t1), CP(FW, t2), CP(BW, t3)], 12.0)
+        self.assertEqual((Lambda + Lambda)[CP(BW, t1), CP(FW, t2), CP(BW, t3)],
                          24.0)
 
         ## Subtraction
         Lambda -= 0.5 * Lambda
-        self.assertEqual(Lambda[CP(BW, t), CP(FW, t), CP(BW, t)], 6.0)
-        self.assertEqual((Lambda - Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)],
+        self.assertEqual(Lambda[CP(BW, t1), CP(FW, t2), CP(BW, t3)], 6.0)
+        self.assertEqual((Lambda - Lambda)[CP(BW, t1), CP(FW, t2), CP(BW, t3)],
                          0.0)
 
         # Unary minus
-        self.assertEqual((-Lambda)[CP(BW, t), CP(FW, t), CP(BW, t)], -6.0)
+        self.assertEqual((-Lambda)[CP(BW, t1), CP(FW, t2), CP(BW, t3)], -6.0)
 
 
 class TestSingular2PKeldyshGF(unittest.TestCase):
@@ -951,7 +964,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
     def test_basic(self):
         g = Singular2PKeldyshGF(mesh=self.t_mesh, arg_index_shapes=((3,), (4,)))
 
-        self.assertEqual(g.mesh, MeshProduct(self.t_mesh))
+        self.assertEqual(g.mesh, self.t_mesh)
         self.assertEqual(g.time_mesh, self.t_mesh)
         self.assertEqual(g.non_time_mesh, MeshProduct())
         self.assertEqual(g.components.shape, (2,))
@@ -1056,7 +1069,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
         eps_t_m = Gf(mesh=mesh, target_shape=(2, 1))
         for t, k in mesh:
             eps_t[t, k] = k[0] * np.cos(t.value)
-            eps_t_m[t] = k[0] * np.array([[1], [2]]) * np.cos(t.value)
+            eps_t_m[t, k] = k[0] * np.array([[1], [2]]) * np.cos(t.value)
 
         g = Singular2PKeldyshGF.from_retime(eps_t)
         self.assertEqual(g.arg_index_shapes, ((), ()))
@@ -1086,7 +1099,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
     def test_conv_scalar(self):
         eps_t1 = Gf(mesh=self.t_mesh, target_shape=())
         eps_t2 = Gf(mesh=self.t_mesh, target_shape=())
-        eps_t12_ref = Gf(mesh=MeshProduct(self.t_mesh), target_shape=())
+        eps_t12_ref = Gf(mesh=self.t_mesh, target_shape=())
         for t in self.t_mesh:
             eps_t1[t] = np.cos(t.value)
             eps_t2[t] = np.cos(2 * t.value)
@@ -1096,7 +1109,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
     def test_conv_matrix(self):
         eps_t1 = Gf(mesh=self.t_mesh, target_shape=(2, 4))
         eps_t2 = Gf(mesh=self.t_mesh, target_shape=(4, 1))
-        eps_t12_ref = Gf(mesh=MeshProduct(self.t_mesh), target_shape=(2, 1))
+        eps_t12_ref = Gf(mesh=self.t_mesh, target_shape=(2, 1))
         for t, (m, n) in product(self.t_mesh, np.ndindex((2, 4))):
             eps_t1[t][m, n] = (m + 1) * (n + 1) * np.cos(t.value)
         for t, (m, n) in product(self.t_mesh, np.ndindex((4, 1))):

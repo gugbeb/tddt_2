@@ -41,9 +41,9 @@ class ContourPoint:
         """
         if self.branch == other.branch:
             if self.branch == Branch.FORWARD:
-                return self.t.linear_index < other.t.linear_index
+                return self.t.data_index < other.t.data_index
             else:
-                return self.t.linear_index >= other.t.linear_index
+                return self.t.data_index >= other.t.data_index
         else:
             return self.branch.value < other.branch.value
 
@@ -130,8 +130,8 @@ class KeldyshGF(ComponentwiseArithmetics):
         #
 
         if isinstance(mesh, MeshReTime):  # Single-argument contour function
-            self.mesh = MeshProduct(mesh)
-            self.time_mesh = self.mesh
+            self.mesh = mesh
+            self.time_mesh = MeshProduct(mesh)
             self.non_time_mesh = MeshProduct()
             self.n_args = 1
 
@@ -328,6 +328,16 @@ class KeldyshGF(ComponentwiseArithmetics):
 
         return g
 
+    def _adjust_mesh_pts(self, pts: tuple):
+        r"""
+        Return pts[0] if self.mesh is a MeshReTime, otherwise return pts itself.
+        """
+        if isinstance(self.mesh, MeshReTime):
+            assert len(pts) == 1
+            return pts[0]
+        else:
+            return pts
+
     def __getitem__(self, args):
         args_t = args if isinstance(args, tuple) else (args,)
 
@@ -341,14 +351,15 @@ class KeldyshGF(ComponentwiseArithmetics):
                 g = self.components[
                     tuple(a.value for a in args_t[:self.n_args])
                 ]
-                return g[args_t[self.n_args:]]
+                return g[self._adjust_mesh_pts(args_t[self.n_args:])]
 
         # Access a single point of the time mesh
         elif len(args_t) == self.n_args and \
                 all(isinstance(a, ContourPoint) for a in args_t):
             g = self.components[tuple(a.branch.value for a in args_t)]
-            return g[tuple(a.t for a in args_t)
-                     + (slice(None),) * len(self.non_time_mesh.components)]
+            pts = tuple(a.t for a in args_t) \
+                + (slice(None),) * len(self.non_time_mesh.components)
+            return g[self._adjust_mesh_pts(pts)]
 
         else:
             raise IndexError(f"Unrecognized index format: {args}")
@@ -366,14 +377,15 @@ class KeldyshGF(ComponentwiseArithmetics):
                 g = self.components[
                     tuple(a.value for a in args_t[:self.n_args])
                 ]
-                g[args_t[self.n_args:]] = value
+                g[self._adjust_mesh_pts(args_t[self.n_args:])] = value
 
         # Access a single point of the time mesh
         elif len(args_t) == self.n_args and \
                 all(isinstance(a, ContourPoint) for a in args_t):
             g = self.components[tuple(a.branch.value for a in args_t)]
-            g[tuple(a.t for a in args_t)
-              + (slice(None),) * len(self.non_time_mesh.components)] = value
+            pts = tuple(a.t for a in args_t) \
+                + (slice(None),) * len(self.non_time_mesh.components)
+            g[self._adjust_mesh_pts(pts)] = value
 
         else:
             raise IndexError(f"Unrecognized index format: {args}")
@@ -585,7 +597,7 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
         #
 
         if isinstance(mesh, MeshReTime):
-            self.mesh = MeshProduct(mesh)
+            self.mesh = mesh
             self.time_mesh = mesh
             self.non_time_mesh = MeshProduct()
             self.n_args = 2
@@ -682,8 +694,11 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
         # Access a single point of the time mesh
         elif len(args_t) == 1 and isinstance(args_t[0], ContourPoint):
             g = self.components[args_t[0].branch.value]
-            return g[(args_t[0].t,)
-                     + (slice(None),) * len(self.non_time_mesh.components)]
+            if isinstance(self.mesh, MeshReTime):
+                return g[args_t[0].t]
+            else:
+                return g[(args_t[0].t,)
+                         + (slice(None),) * len(self.non_time_mesh.components)]
 
         else:
             raise IndexError(f"Unrecognized index format: {args}")
@@ -702,8 +717,11 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
         # Access a single point of the time mesh
         elif len(args_t) == 1 and isinstance(args_t[0], ContourPoint):
             g = self.components[args_t[0].branch.value]
-            g[(args_t[0].t,)
-              + (slice(None),) * len(self.non_time_mesh.components)] = value
+            if isinstance(self.mesh, MeshReTime):
+                g[args_t[0].t] = value
+            else:
+                g[(args_t[0].t,)
+                  + (slice(None),) * len(self.non_time_mesh.components)] = value
 
         else:
             raise IndexError(f"Unrecognized index format: {args}")
@@ -730,11 +748,13 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
 
         sub_t = subscripts['time'][0]
 
-        mesh_comps_res = make_conv_res_nontime_mesh(self.mesh.components[1:],
-                                                    other.mesh.components[1:])
+        mesh_comps_res = make_conv_res_nontime_mesh(
+            self.non_time_mesh.components, other.non_time_mesh.components
+        )
         subs_self_nt, subs_other_nt, subs_res_nt = \
-            make_conv_nontime_einsum_subscripts(self.mesh.components[1:],
-                                                other.mesh.components[1:])
+            make_conv_nontime_einsum_subscripts(
+                self.non_time_mesh.components, other.non_time_mesh.components
+            )
 
         subshape_self = self.arg_index_shapes
         subshape_other = other.arg_index_shapes
@@ -768,10 +788,12 @@ class Singular2PKeldyshGF(ComponentwiseArithmetics):
 
         subs = f"{subs_self},{subs_other}->{subs_res}"
 
-        res = Singular2PKeldyshGF(
-            mesh=MeshProduct(self.time_mesh, *mesh_comps_res),
-            arg_index_shapes=subshapes_res
-        )
+        if mesh_comps_res:
+            mesh_res = MeshProduct(self.time_mesh, *mesh_comps_res)
+        else:
+            mesh_res = self.time_mesh
+
+        res = Singular2PKeldyshGF(mesh=mesh_res, arg_index_shapes=subshapes_res)
 
         for br in Branch:
             res[br].data[:] = np.einsum(subs,
