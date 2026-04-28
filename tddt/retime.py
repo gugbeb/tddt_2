@@ -172,6 +172,14 @@ def conv_ret_ret(a_ret: Gf,
     subs_w = ts[0]
     subs = f"{subs_a_ret},{subs_w},{subs_b_ret}->{subs_res}"
 
+    # Implements a workaround for https://github.com/numpy/numpy/issues/31350
+    is_numpy1 = np.version.version[:2] == '1.'
+    def take_data_slice(d, n, m):
+        if is_numpy1:
+            return d[n, m, ...]
+        else:
+            return d[n, m, ...] if (d.ndim > 2) else d[n, m, ...].reshape(1)
+
     for n in range(integrator.order + 1, len(t_mesh)):
         # Eq. (110), line 1
         for m in range(n - integrator.order):
@@ -179,7 +187,7 @@ def conv_ret_ret(a_ret: Gf,
                       a_ret.data[n, m:(n + 1), ...],
                       w[n - m, :(n - m + 1)],
                       b_ret.data[m:(n + 1), m, ...],
-                      out=res.data[n, m, ...],
+                      out=take_data_slice(res.data, n, m),
                       optimize="optimal")
         # Eq. (110), line 2
         for m in range(n - integrator.order, n + 1):
@@ -187,7 +195,7 @@ def conv_ret_ret(a_ret: Gf,
                       a_ret.data[n, n:(n - integrator.order - 1):-1, ...],
                       w[n - m, k_slice],
                       b_ret.data[n:(n - integrator.order - 1):-1, m, ...],
-                      out=res.data[n, m, ...],
+                      out=take_data_slice(res.data, n, m),
                       optimize="optimal")
 
     return res
