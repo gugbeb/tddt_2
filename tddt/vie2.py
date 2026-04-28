@@ -196,9 +196,16 @@ class VIE2Solver:
                                        g[(n - j, m, *shape_sl, *b)],
                                        axes=len(self.shape))
 
-            g[(n, m, *shape_sl, *b)] = np.linalg.tensorsolve(self.stepping_mat,
-                                                             self.stepping_rhs)
-            g[(m, n, *b, *shape_sl)] = -np.conj(g[(n, m, *shape_sl, *b)])
+            g_slice = (n, m, *shape_sl, *b)
+            if len(g_slice) > 2:
+                g[g_slice] = np.linalg.tensorsolve(
+                    self.stepping_mat, self.stepping_rhs
+                )
+            else:
+                g[n, m, np.newaxis] = np.linalg.tensorsolve(
+                    self.stepping_mat, self.stepping_rhs
+                )
+            g[(m, n, *b, *shape_sl)] = -np.conj(g[g_slice])
 
     def solve_causal(self, f: np.ndarray, q: np.ndarray):
         r"""
