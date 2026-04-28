@@ -1,24 +1,18 @@
 # syntax=docker/dockerfile:1
-FROM flatironinstitute/triqs:3.1.1 as base
-LABEL maintainer="Igor Krivenko <iskrivenko@proton.me>"
+FROM flatironinstitute/triqs:3.3.1 AS base
+LABEL maintainer="Igor Krivenko"
 LABEL description="Implementation of the time-dependent dual TRILEX theory"
-LABEL version="0.3.2"
+LABEL version="0.3.3"
+LABEL org.opencontainers.image.source=https://github.com/krivenko/tddt
 
 USER root
 RUN useradd -m -s /bin/bash -u 999 build && echo "build:build" | chpasswd
 RUN usermod -aG sudo build
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    make g++-10 apt-utils vim vim-python-jedi
+    make g++ file apt-utils vim vim-python-jedi python3-venv
 
 ENV OMPI_ALLOW_RUN_AS_ROOT=1 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-
-# Download a C++20 compatible version of Boost
-ARG BOOST_URL=https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.tar.gz
-RUN curl -O -L $BOOST_URL && \
-    tar -xf boost_1_78_0.tar.gz && \
-    mv boost_1_78_0 /home/build/boost && \
-    rm boost_1_78_0.tar.gz
 
 USER build
 RUN mkdir /home/build/realevol
@@ -42,34 +36,32 @@ RUN make install
 USER build
 WORKDIR /home/build/realevol
 
-RUN mkdir -p -m 0700 /home/build/.ssh && \
-    ssh-keyscan github.com >> /home/build/.ssh/known_hosts
-RUN --mount=type=ssh,uid=999 \
-    git clone -v git@github.com:krivenko/triqs-realevol.git realevol.git
+RUN git clone https://github.com/krivenko/triqs-realevol.git realevol.git
 RUN mkdir realevol.build
 WORKDIR realevol.build
+ENV CC=gcc CXX=g++ REPO=/build/repo
 RUN cmake ../realevol.git                               \
         -DCMAKE_INSTALL_PREFIX=/usr                     \
         -DCMAKE_BUILD_TYPE=Release                      \
-        -DBoost_INCLUDE_DIR=$HOME/boost                 \
         -Darpack-ng_DIR=/usr/lib/x86_64-linux-gnu/cmake \
         -DBUILD_SHARED_LIBS=ON                          \
         -DBuild_Tests=ON                                \
-        -DBuild_Benchmarks=OFF
-RUN make VERBOSE=1 -j6 && ctest --output-on-failure
+        -DBuild_Benchmarks=OFF                          \
+        -DBUILD_DEBIAN_PACKAGE=ON
+RUN make -j6 VERBOSE=1 && ctest --output-on-failure && cpack
 USER root
-RUN make install
-
-# Cleanup build files
-USER root
-RUN rm -rf /home/build/boost /home/build/realevol
+RUN make install && mkdir -p $REPO && mv *.deb $REPO
 
 # Install TDDT
-USER build
-COPY --chown=build . /src/tddt
+USER root
+COPY --chown=root . /src/tddt
 WORKDIR /src/tddt
-RUN pip3 install --user -r requirements.txt
-RUN pip3 install --user .
+RUN pip3 install --user --break-system-packages -r requirements.txt
+RUN pip3 install --user --break-system-packages .
 
 # Test TDDT
 RUN python3 -m pytest -v --with-mpi
+
+# Cleanup build files
+USER root
+RUN rm -rf /home/build/arpack-ng.* /home/build/realevol.*
