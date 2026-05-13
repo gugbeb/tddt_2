@@ -2,7 +2,7 @@ import unittest
 from itertools import product
 import numpy as np
 
-from triqs.gf import MeshReTime, MeshBrillouinZone, MeshProduct, Gf
+from triqs.gf import MeshReTime, MeshBrZone, MeshProduct, Gf
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
@@ -84,7 +84,7 @@ class TestRetime(unittest.TestCase):
         assert_gfs_are_close(g_adv, g_adv_ref, precision=1e-12)
 
         # Matrix-valued GF with an extra mesh component
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), 5)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), 5)
         g_l, g_g = self._make_g_l_g_g_matrix_bz(bz_mesh)
         g = KeldyshGF.from_lesser_greater(g_l, g_g)
 
@@ -224,7 +224,7 @@ class TestRetime(unittest.TestCase):
 
         # Matrix-valued GF with an extra mesh component
         n_k = 5
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
 
         a_l, a_g = self._make_g_l_g_g_matrix_bz(bz_mesh, 1.0)
         b_l, b_g = self._make_g_l_g_g_matrix_bz(bz_mesh, 2.0)
@@ -298,9 +298,9 @@ class TestRetime(unittest.TestCase):
 
         # Matrix-valued GF with an extra mesh component
         n_k1 = 4
-        bz1_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k1)
+        bz1_mesh = MeshBrZone(BrillouinZone(self.bl), n_k1)
         n_k2 = 3
-        bz2_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k2)
+        bz2_mesh = MeshBrZone(BrillouinZone(self.bl), n_k2)
 
         a_l, a_g = self._make_g_l_g_g_matrix_bz(bz1_mesh, 1.0)
         b_l, b_g = self._make_g_l_g_g_matrix_bz(bz2_mesh, 2.0)

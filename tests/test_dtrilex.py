@@ -2,7 +2,7 @@ import unittest
 from itertools import product
 import numpy as np
 
-from triqs.gf import MeshReTime, MeshProduct, MeshBrillouinZone
+from triqs.gf import MeshReTime, MeshProduct, MeshBrZone
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF
@@ -29,7 +29,7 @@ class TestDiagrams(unittest.TestCase):
 
         bl = BravaisLattice(units=[(1, 0, 0)])
         cls.n_k = 3
-        cls.bz_mesh = MeshBrillouinZone(BrillouinZone(bl), cls.n_k)
+        cls.bz_mesh = MeshBrZone(BrillouinZone(bl), cls.n_k)
 
         # Use a lower order quadrature rule so that is is compatible with small
         # time meshes.

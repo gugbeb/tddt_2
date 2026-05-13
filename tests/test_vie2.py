@@ -4,7 +4,7 @@ from numpy import sqrt, exp, sin, sinh, cos, cosh
 from numpy.testing import assert_array_almost_equal
 from scipy.special import hyp0f1
 
-from triqs.gf import Gf, MeshReTime, MeshBrillouinZone, MeshProduct
+from triqs.gf import Gf, MeshReTime, MeshBrZone, MeshProduct
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
 
@@ -241,7 +241,7 @@ class TestVIE2(unittest.TestCase):
 
         bl = BravaisLattice(units=[(1, 0, 0)])  # Square lattice
         n_k = 3
-        bz_mesh = MeshBrillouinZone(BrillouinZone(bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(bl), n_k)
 
         mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 

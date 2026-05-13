@@ -30,7 +30,7 @@ from tddt.keldysh import Singular2PKeldyshGF
 
 # Import some TRIQS modules related to lattice
 from triqs.lattice import BravaisLattice, BrillouinZone
-from triqs.gf import MeshBrillouinZone
+from triqs.gf import MeshBrZone
 
 from tddt.lattice import local_part
 from tddt.models import SingleFermion, SquarePlaquette
@@ -137,7 +137,7 @@ tt_mesh = MeshProduct(t_mesh, t_mesh)
 lat = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # 2D square lattice
 bz = BrillouinZone(lat)  # Brillouin zone of the lattice
 n_k = 2 # Number of k-points along each dimension
-bz_mesh = MeshBrillouinZone(bz, n_k) # k-mesh on 1BZ; 0 - 2pi
+bz_mesh = MeshBrZone(bz, n_k) # k-mesh on 1BZ; 0 - 2pi
 nkx = n_k
 nky = n_k
 nkz = 1

@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy.linalg import expm
 
-from triqs.gf import MeshReTime, MeshBrillouinZone, MeshProduct, Gf
+from triqs.gf import MeshReTime, MeshBrZone, MeshProduct, Gf
 from triqs.gf.descriptors import Function
 from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.utility.comparison_tests import assert_gfs_are_close
@@ -317,7 +317,7 @@ class TestKeldyshGF(unittest.TestCase):
     def test_n_args1_bz(self):
         n_k = 10
         t_mesh = MeshReTime(0, 6.0, 7)
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(t_mesh, bz_mesh)
 
         g = KeldyshGF(mesh=mesh, arg_index_shapes=((3,),))
@@ -400,7 +400,7 @@ class TestKeldyshGF(unittest.TestCase):
     def test_common_bz(self):
         tt_mesh = MeshProduct(MeshReTime(0, 6.0, 7), MeshReTime(0, 6.0, 8))
         n_k = 10
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
 
         mesh = MeshProduct(*tt_mesh.components, bz_mesh)
 
@@ -424,7 +424,7 @@ class TestKeldyshGF(unittest.TestCase):
     def test_target_dot(self):
         n_k = 3
         t_mesh = MeshReTime(0, 6.0, 7)
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
 
         g = KeldyshGF(mesh=mesh, arg_index_shapes=((2, 3), (4, 5, 6), (3, 2)))
@@ -488,7 +488,7 @@ class TestKeldyshGF(unittest.TestCase):
 
         # Matrix-valued GF with an extra k-mesh component
         n_k = 4
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 
         g_l = Gf(mesh=mesh, target_shape=(2, 2))
@@ -510,7 +510,7 @@ class TestKeldyshGF(unittest.TestCase):
 
         # Tensor-valued GF with an extra k-mesh component
         n_k = 4
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 
         g_l = Gf(mesh=mesh, target_shape=(2, 3, 4))
@@ -571,7 +571,7 @@ class TestKeldyshGF(unittest.TestCase):
 
         # Matrix-valued GF with an extra k-mesh component
         n_k = 4
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 
         g_l = Gf(mesh=mesh, target_shape=(3, 2))
@@ -592,7 +592,7 @@ class TestKeldyshGF(unittest.TestCase):
 
         # Tensor-valued GF with an extra k-mesh component
         n_k = 4
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
         mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 
         g_l = Gf(mesh=mesh, target_shape=(2, 3, 4))
@@ -708,7 +708,7 @@ class TestKeldyshGF(unittest.TestCase):
         tt_mesh = MeshProduct(t_mesh, t_mesh)
 
         n_k = 4
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
 
         occ = [0.1, 0.2]
         eps_k = [np.array([0.6 + 0.01 * np.cos(k.value[0]) for k in bz_mesh]),
@@ -749,7 +749,7 @@ class TestKeldyshGF(unittest.TestCase):
         tt_mesh = MeshProduct(t_mesh, t_mesh)
 
         n_k = 4
-        bz_mesh = MeshBrillouinZone(BrillouinZone(self.bl), n_k)
+        bz_mesh = MeshBrZone(BrillouinZone(self.bl), n_k)
 
         occ = [0.1, 0.2]
         eps_k = [np.array([0.6 + 0.01 * np.cos(k.value[0]) for k in bz_mesh]),
@@ -795,8 +795,8 @@ class TestKeldyshGF(unittest.TestCase):
         tt_mesh = MeshProduct(t_mesh, t_mesh)
 
         n_k1, n_k2 = 4, 3
-        bz_meshes = [MeshBrillouinZone(BrillouinZone(self.bl), n_k1),
-                     MeshBrillouinZone(BrillouinZone(self.bl), n_k2)]
+        bz_meshes = [MeshBrZone(BrillouinZone(self.bl), n_k1),
+                     MeshBrZone(BrillouinZone(self.bl), n_k2)]
         ttk_meshes = [MeshProduct(*tt_mesh.components, bz_meshes[i])
                       for i in range(2)]
 
@@ -840,8 +840,8 @@ class TestKeldyshGF(unittest.TestCase):
         tt_mesh = MeshProduct(t_mesh, t_mesh)
 
         n_k1, n_k2 = 4, 3
-        bz_meshes = [MeshBrillouinZone(BrillouinZone(self.bl), n_k1),
-                     MeshBrillouinZone(BrillouinZone(self.bl), n_k2)]
+        bz_meshes = [MeshBrZone(BrillouinZone(self.bl), n_k1),
+                     MeshBrZone(BrillouinZone(self.bl), n_k2)]
         ttk_meshes = [MeshProduct(*tt_mesh.components, bz_meshes[i])
                       for i in range(2)]
 
@@ -958,7 +958,7 @@ class TestSingular2PKeldyshGF(unittest.TestCase):
 
         cls.n_k = [4, 3]
         cls.bz_meshes = [
-            MeshBrillouinZone(BrillouinZone(cls.bl), n_k) for n_k in cls.n_k
+            MeshBrZone(BrillouinZone(cls.bl), n_k) for n_k in cls.n_k
         ]
 
     def test_basic(self):
