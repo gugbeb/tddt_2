@@ -19,9 +19,9 @@ from tddt.realevol import (
     compute_keldysh_conn_correlator_2t,
     compute_keldysh_vertex3
 )
-from tddt.diagrams import (polarization_2nd_order,
-                           selfenergy_2nd_order,
-                           selfenergy_2nd_order_hf)
+from tddt.dtrilex import (polarization_2nd_order,
+                          selfenergy_2nd_order,
+                          selfenergy_2nd_order_hf)
 
 #from tddt.keldysh import Branch, lesser, greater, retarded, advanced
 from tddt.keldysh import ContourPoint

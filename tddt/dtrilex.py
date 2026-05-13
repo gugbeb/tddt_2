@@ -1,5 +1,5 @@
 #
-# Evaluation of diagrams on Keldysh contour
+# Dual TRILEX theory
 #
 
 from .keldysh import KeldyshGF, conv

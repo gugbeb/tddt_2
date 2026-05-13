@@ -6,9 +6,9 @@ from triqs.gf import MeshReTime, MeshProduct, MeshBrillouinZone
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF
-from tddt.diagrams import (polarization_2nd_order,
-                           selfenergy_2nd_order,
-                           selfenergy_2nd_order_hf)
+from tddt.dtrilex import (polarization_2nd_order,
+                          selfenergy_2nd_order,
+                          selfenergy_2nd_order_hf)
 from tddt.integration import GregoryIntegrator
 from tddt.testing import assert_keldysh_gf_almost_equal
 
