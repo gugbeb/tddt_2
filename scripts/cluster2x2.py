@@ -19,7 +19,8 @@ from tddt.realevol import (
     compute_keldysh_conn_correlator_2t,
     compute_keldysh_vertex3
 )
-from tddt.dtrilex import (polarization_2nd_order,
+from tddt.dtrilex import (DualTRILEX,
+                          polarization_2nd_order,
                           selfenergy_2nd_order,
                           selfenergy_2nd_order_hf)
 
@@ -91,10 +92,12 @@ model_ref = SquarePlaquette(
     vector_potential=(Ax_t, Ay_t)
 )
 
-# Initial thermal state of the reference system
-init_state_ref = model_ref.equilibrium_init_state(T)
+theory = DualTRILEX(model_ref, t_mesh)
 
-# Local Hubbard interaction and energy level on site 0 after quench
+# Compute initial thermal state of the reference system
+theory.compute_ref_init_state(T, verbosity=1)
+
+# Set local Hubbard interaction and energy level on site 0 after quench
 model_ref.U[0] = U1
 model_ref.t[0, 0] = -mu1
 

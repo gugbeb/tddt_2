@@ -2,7 +2,39 @@
 # Dual TRILEX theory
 #
 
+from triqs.gf import MeshReTime
+
 from .keldysh import KeldyshGF, conv
+from .models import FiniteSystem
+
+
+class DualTRILEX:
+    r"""
+    Implementation of the "single-shot" dual TRILEX theory.
+    """
+
+    def __init__(self, system_ref: FiniteSystem, t_mesh: MeshReTime):
+        r"""
+        Initialize a dual TRILEX calculation.
+
+        ref_system: Model object representing the reference system.
+        t_mesh: Real time mesh used to define correlation functions.
+        """
+        self.system_ref = system_ref
+        self.t_mesh = t_mesh
+
+    def compute_ref_init_state(self, T: float, /, **kwargs):
+        r"""
+        Compute the initial thermal state of the reference system.
+
+        T: Temperature.
+        kwargs: Parameters to be passed to make_equilibrium_init_state().
+        """
+
+        # Compute the initial state
+        self.init_state_ref = self.system_ref.equilibrium_init_state(
+            T, **kwargs
+        )
 
 
 def polarization_2nd_order(Lambda: KeldyshGF, g: KeldyshGF):
