@@ -6,6 +6,7 @@ from itertools import product
 from typing import Tuple, Optional, Callable
 
 import numpy as np
+from scipy.integrate import quad
 
 from triqs.gf import Gf, MeshReTime, MeshCycLat, MeshBrZone, MeshProduct
 from triqs.lattice import BravaisLattice, BrillouinZone
@@ -85,6 +86,61 @@ class FermionBand:
                 ex = np.exp(-1j * eps_k * (time1 - time2))
                 g_g[time1, time2, k] = -1j * (1.0 - occ_k) * ex
                 g_l[time1, time2, k] = -1j * (-occ_k) * ex
+        return KeldyshGF.from_lesser_greater(g_l, g_g)
+
+
+class FermionFlatBand:
+    "Fermionic states forming a band with a flat density of states"
+
+    def __init__(self, D: float, e0: float = 0.0):
+        """
+        Construct a flat band of fermionic states with the half-bandwidth 'D'
+        centered on 'e0'.
+        """
+        assert D > 0, "The half-bandwidth must be positive"
+
+        self.D = D
+        self.e0 = e0
+
+    def gf(self, t_mesh: MeshReTime, /, T: float):
+        """
+        Single-particle Green's function computed at a fixed temperature 'T'.
+        """
+        tt_mesh = MeshProduct(t_mesh, t_mesh)
+        g_l = Gf(mesh=tt_mesh, target_shape=())
+        g_g = Gf(mesh=tt_mesh, target_shape=())
+
+        w1 = self.e0 - self.D
+        w2 = self.e0 + self.D
+        w_min_g, w_max_g = max(0, w1), max(0, w2)
+        w_min_l, w_max_l = min(0, w1), min(0, w2)
+
+        if T == 0.0:  # At zero temperature, we have simple expressions
+            for time1, time2 in tt_mesh:
+                dt = time1 - time2
+                if dt == 0:
+                    val_g = -1j * (w_max_g - w_min_g) / (2 * self.D)
+                    val_l = 1j * (w_max_l - w_min_l) / (2 * self.D)
+                else:
+                    val_g = (np.exp(-1j * dt * w_max_g)
+                             - np.exp(-1j * dt * w_min_g)) / (2 * self.D * dt)
+                    val_l = -(np.exp(-1j * dt * w_max_l)
+                              - np.exp(-1j * dt * w_min_l)) / (2 * self.D * dt)
+                g_g[time1, time2] = val_g
+                g_l[time1, time2] = val_l
+        else:  # Use numerical integrator for energy integral
+            x1, x2 = w1 / T, w2 / T
+
+            def energy_integral(a, sign):
+                return quad(lambda x: np.exp(-1j * a * x) * fermi(sign * x),
+                            x1, x2, complex_func=True)[0]
+
+            prefactor = T / (2 * self.D)
+            for time1, time2 in tt_mesh:
+                a = (time1 - time2) * T
+                g_g[time1, time2] = -1j * prefactor * energy_integral(a, -1)
+                g_l[time1, time2] = 1j * prefactor * energy_integral(a, 1)
+
         return KeldyshGF.from_lesser_greater(g_l, g_g)
 
 

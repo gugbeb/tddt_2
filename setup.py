@@ -8,5 +8,5 @@ setup(
     author_email='iskrivenko@proton.me',
     description='Implementation of the time-dependent dual TRILEX theory',
     packages=['tddt'],
-    install_requires=['numpy >= 1.12.0', 'scipy >= 1.7.0'],
+    install_requires=['numpy >= 1.12.0', 'scipy >= 1.10.0'],
 )

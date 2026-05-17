@@ -9,7 +9,11 @@ from realevol.tinterp import TInterp as ti
 import realevol.operators_tinterp as op
 
 from tddt.keldysh import Branch, ContourPoint
-from tddt.models import spin_names, SingleFermion, FermionBand, SquarePlaquette
+from tddt.models import (spin_names,
+                         SingleFermion,
+                         FermionBand,
+                         FermionFlatBand,
+                         SquarePlaquette)
 
 
 class TestFermion(unittest.TestCase):
@@ -73,6 +77,63 @@ class TestFermion(unittest.TestCase):
 
                 self.assertAlmostEqual(g_n[z1, z2][k], ref_n)
                 self.assertAlmostEqual(g_T[z1, z2][k], ref_T)
+
+    def test_FermionFlatBand(self):
+        t_points = list(self.t_mesh)
+        t0, t1, t2 = t_points[0], t_points[10], t_points[20]
+
+        # Reference values are produced by a Mathematica notebook
+
+        ffb = FermionFlatBand(2, -3)
+
+        g1_T0 = ffb.gf(self.t_mesh, T=0.0)
+        self.assertAlmostEqual(g1_T0.greater()[t0, t0], 0.0)
+        self.assertAlmostEqual(g1_T0.lesser()[t0, t0], 1j)
+        self.assertAlmostEqual(g1_T0.greater()[t1, t0], 0.0)
+        self.assertAlmostEqual(g1_T0.lesser()[t1, t0], 0.0451009 + 0.00704116j)
+        self.assertAlmostEqual(g1_T0.greater()[t2, t0], 0.0)
+        self.assertAlmostEqual(g1_T0.lesser()[t2, t0], 0.00567796 - 0.0177414j)
+        g1 = ffb.gf(self.t_mesh, T=2.0)
+        self.assertAlmostEqual(g1.greater()[t0, t0], -0.1975936j)
+        self.assertAlmostEqual(g1.lesser()[t0, t0], 0.80240638j)
+        self.assertAlmostEqual(g1.greater()[t1, t0], -0.00988 - 0.00430501j)
+        self.assertAlmostEqual(g1.lesser()[t1, t0], 0.0352209 + 0.00273615j)
+        self.assertAlmostEqual(g1.greater()[t2, t0], 0.00118654 + 0.00477684j)
+        self.assertAlmostEqual(g1.lesser()[t2, t0], 0.0068645 - 0.0129646j)
+
+        ffb = FermionFlatBand(2, -1)
+
+        g2_T0 = ffb.gf(self.t_mesh, T=0.0)
+        self.assertAlmostEqual(g2_T0.greater()[t0, t0], -0.25j)
+        self.assertAlmostEqual(g2_T0.lesser()[t0, t0], 0.75j)
+        self.assertAlmostEqual(g2_T0.greater()[t1, t0], -0.0459768 + 0.0136005j)
+        self.assertAlmostEqual(g2_T0.lesser()[t1, t0], -0.0211437 - 0.0247008j)
+        self.assertAlmostEqual(g2_T0.greater()[t2, t0], -0.007399 - 0.0114118j)
+        self.assertAlmostEqual(g2_T0.lesser()[t2, t0], -0.0244052 - 0.00381013j)
+        g2 = ffb.gf(self.t_mesh, T=2.0)
+        self.assertAlmostEqual(g2.greater()[t0, t0], - 0.3863319j)
+        self.assertAlmostEqual(g2.lesser()[t0, t0], + 0.6136681j)
+        self.assertAlmostEqual(g2.greater()[t1, t0], -0.0134187 + 0.0132434j)
+        self.assertAlmostEqual(g2.lesser()[t1, t0], 0.0114144 - 0.0250579j)
+        self.assertAlmostEqual(g2.greater()[t2, t0], 0.00529361 - 0.00648333j)
+        self.assertAlmostEqual(g2.lesser()[t2, t0], -0.0117126 + 0.00111836j)
+
+        ffb = FermionFlatBand(2, 3)
+
+        g3_T0 = ffb.gf(self.t_mesh, T=0.0)
+        self.assertAlmostEqual(g3_T0.greater()[t0, t0], -1j)
+        self.assertAlmostEqual(g3_T0.lesser()[t0, t0], 0)
+        self.assertAlmostEqual(g3_T0.greater()[t1, t0], 0.0451009 - 0.00704116j)
+        self.assertAlmostEqual(g3_T0.lesser()[t1, t0], 0)
+        self.assertAlmostEqual(g3_T0.greater()[t2, t0], 0.00567796 + 0.0177414j)
+        self.assertAlmostEqual(g3_T0.lesser()[t2, t0], 0)
+        g3 = ffb.gf(self.t_mesh, T=2.0)
+        self.assertAlmostEqual(g3.greater()[t0, t0], -0.8024064j)
+        self.assertAlmostEqual(g3.lesser()[t0, t0], +0.1975936j)
+        self.assertAlmostEqual(g3.greater()[t1, t0], 0.0352209 - 0.00273615j)
+        self.assertAlmostEqual(g3.lesser()[t1, t0], -0.00988 + 0.00430501j)
+        self.assertAlmostEqual(g3.greater()[t2, t0], 0.0068645 + 0.0129646j)
+        self.assertAlmostEqual(g3.lesser()[t2, t0], 0.00118654 - 0.00477684j)
 
 
 class TestSquarePlaquette(unittest.TestCase):
