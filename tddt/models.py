@@ -8,8 +8,7 @@ from typing import Tuple, Optional, Callable
 import numpy as np
 from scipy.integrate import quad
 
-from triqs.gf import Gf, MeshReTime, MeshCycLat, MeshBrZone, MeshProduct
-from triqs.lattice import BravaisLattice, BrillouinZone
+from triqs.gf import Gf, MeshReTime, MeshBrZone, MeshProduct
 
 from realevol.tinterp import TInterp as ti
 import realevol.operators_tinterp as op
@@ -144,51 +143,24 @@ class FermionFlatBand:
         return KeldyshGF.from_lesser_greater(g_l, g_g)
 
 
-class FiniteSystem:
-    "A finite system of fermions."
-    def equilibrium_init_state(self, T: float, /, **kwargs):
-        """
-        Compute the equilibrium initial state of this model at temperature T
-        using realevol. All keyword arguments are passed as parameter dictionary
-        to make_equilibrium_init_state().
-        """
-        return make_equilibrium_init_state(self.hamiltonian,
-                                           fermion_indices=self.fops,
-                                           boson_indices=set(),
-                                           temperature=T,
-                                           params=kwargs)
-
-
-class SquarePlaquette(FiniteSystem):
-    """
-    A square-shaped cluster of a 2D square lattice with local and non-local
-    Hubbard interactions. Orientation of the Cartesian axes and the enumeration
-    order of the cluster sites are shown below.
-
-     ^ y
-     |
-
-    (N-1)------(2N-1)----- ... ---- ...
-      |          |
-     ...        ...
-      |          |
-     (2)-------(N+2)------ ... ---- ...
-      |          |
-     (1)-------(N+1)------ ... ---- ...
-      |          |          |
-     (0)--------(N)--------(2N)---- ... -> x
+class FiniteCluster:
+    r"""
+    A finite cluster with local and non-local Hubbard interactions.
     """
 
-    def __init__(self, N: int, *,
+    def __init__(self,
+                 coords: list[Tuple[float, float, float]], *,
                  hopping: Optional[np.ndarray] = None,
                  local_int: Optional[np.ndarray] = None,
                  nonlocal_int: Optional[np.ndarray] = None,
-                 vector_potential: Optional[Tuple[object, object]] = None):
+                 vector_potential:
+                     Optional[Tuple[object, object, object]] = None):
         """
-        Construct a square-shaped cluster.
+        Construct a cluster.
 
-        :param N: Number of sites along each axis.
-        :type N: int
+        :param coords: List of triplets -- Cartesian coordinates of sites
+                       in the cluster.
+        :type coords: list[tuple[float, float, float]]
 
         :param hopping: Hopping matrix.
         :type hopping: np.ndarray, optional, default=zero array
@@ -203,60 +175,88 @@ class SquarePlaquette(FiniteSystem):
         :type vector_potential: Tuple[object, object],
                                 optional, default = (0, 0)
         """
-        self.N = N
-        self.lattice = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])
-        self.bz = BrillouinZone(self.lattice)
-        self.r_mesh = MeshCycLat(self.lattice, self.N)
-        self.k_mesh = MeshBrZone(self.bz, self.N)
-        n_sites = len(self.r_mesh)
+        self.coords = coords
+        self.N = len(coords)
 
         # Hopping
-        self.t = np.zeros((n_sites, n_sites), dtype=object) \
+        self.hopping = np.zeros((self.N, self.N), dtype=object) \
             if (hopping is None) else np.array(hopping)
+
         # Local interaction
-        self.U = np.zeros((n_sites,), dtype=object) \
+        self.local_int = np.zeros(self.N, dtype=object) \
             if (local_int is None) else np.array(local_int)
+
         # Non-local interaction
-        self.V = np.zeros((n_sites, n_sites), dtype=object) \
+        self.nonlocal_int = np.zeros((self.N, self.N), dtype=object) \
             if (nonlocal_int is None) else np.array(nonlocal_int)
+
         # Vector potential
-        self.A = (0.0, 0.0) if (vector_potential is None) \
+        self.peierls = np.zeros((self.N, self.N), dtype=object)
+        self.vector_potential = (0.0, 0.0, 0.0) if (vector_potential is None) \
             else (*vector_potential,)
+
+    def _compute_peierls(self):
+        "Compute Peierls phases"
+        Ax, Ay, Az = self.vector_potential
+        for i, j in product(range(self.N), repeat=2):
+            ri, rj = self.coords[i], self.coords[j]
+            dx = ri[0] - rj[0]
+            dy = ri[1] - rj[1]
+            dz = ri[2] - rj[2]
+            self.peierls[i, j] = ti(Ax.mesh, np.exp(-1j * dx * Ax.data)) \
+                if isinstance(Ax, ti) else np.exp(-1j * dx * Ax)
+            self.peierls[i, j] *= ti(Ay.mesh, np.exp(-1j * dy * Ay.data)) \
+                if isinstance(Ay, ti) else np.exp(-1j * dy * Ay)
+            self.peierls[i, j] *= ti(Az.mesh, np.exp(-1j * dz * Az.data)) \
+                if isinstance(Az, ti) else np.exp(-1j * dz * Az)
+
+    @property
+    def vector_potential(self):
+        "Vector potential"
+        return self._A
+
+    @vector_potential.setter
+    def vector_potential(self, A: Tuple[object, object, object]):
+        self._A = A
+        self._compute_peierls()
 
     @property
     def fops(self):
         "Fundamental operator set of this model"
-        return set(product(spin_names, list(range(self.N ** 2))))
+        return set(product(spin_names, list(range(self.N))))
 
     @property
     def gf_struct(self):
         "Structure of TRIQS BlockGf object"
-        return [(spin_names[0], self.N ** 2), (spin_names[1], self.N ** 2)]
+        return [(spin_names[0], self.N), (spin_names[1], self.N)]
 
     @property
     def hamiltonian(self):
         up, dn = spin_names
-        n_sites = len(self.r_mesh)
-
-        Ax, Ay = self.A
 
         h = op.Operator()
         # Hopping
-        for (i, ri), (j, rj) in product(enumerate(self.r_mesh), repeat=2):
-            # Compute Peierls prefactor
-            dx, dy = (ri - rj)[:2]
-            peierls = ti(Ax.mesh, np.exp(-1j * dx * Ax.data)) \
-                if isinstance(Ax, ti) else np.exp(-1j * dx * Ax)
-            peierls *= ti(Ay.mesh, np.exp(-1j * dy * Ay.data)) \
-                if isinstance(Ay, ti) else np.exp(-1j * dy * Ay)
-
-            h += sum(self.t[i, j] * peierls
+        for i, j in product(range(self.N), repeat=2):
+            h += sum(self.hopping[i, j] * self.peierls[i, j]
                      * op.c_dag(sn, i) * op.c(sn, j) for sn in spin_names)
 
         # Interaction
-        h += sum(self.U[i] * op.n(up, i) * op.n(dn, i) for i in range(n_sites))
-        h += sum(self.V[i, j]
+        h += sum(self.local_int[i] * op.n(up, i) * op.n(dn, i)
+                 for i in range(self.N))
+        h += sum(self.nonlocal_int[i, j]
                  * (op.n(up, i) + op.n(dn, i)) * (op.n(up, j) + op.n(dn, j))
-                 for i, j in product(range(n_sites), repeat=2))
+                 for i, j in product(range(self.N), repeat=2))
 
         return h
+
+    def equilibrium_init_state(self, T: float, /, **kwargs):
+        """
+        Compute the equilibrium initial state of this model at temperature T
+        using realevol. All keyword arguments are passed as parameter dictionary
+        to make_equilibrium_init_state().
+        """
+        return make_equilibrium_init_state(self.hamiltonian,
+                                           fermion_indices=self.fops,
+                                           boson_indices=set(),
+                                           temperature=T,
+                                           params=kwargs)

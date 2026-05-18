@@ -34,7 +34,7 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 from triqs.gf import MeshBrZone
 
 from tddt.lattice import local_part
-from tddt.models import SingleFermion, SquarePlaquette
+from tddt.models import SingleFermion, FiniteCluster
 from tddt.vie2 import solve_vie2
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
@@ -77,10 +77,10 @@ txx = 1.0 * t_nn
 # Temperature
 T = 0.0
 
-# Model object
-model_ref = SquarePlaquette(
+# Reference system
+model_ref = FiniteCluster(
     # 2x2 plaquette
-    N=2,
+    [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0)],
     # Hopping matrix
     hopping=[[-mu, txx, txx,  tx],
              [txx, exx, 0,    0 ],
@@ -89,7 +89,7 @@ model_ref = SquarePlaquette(
     # Local interaction
     local_int=[U, 0, 0, 0],
     # Vector potential: Components along the two Cartesian axes
-    vector_potential=(Ax_t, Ay_t)
+    vector_potential=(Ax_t, Ay_t, 0)
 )
 
 theory = DualTRILEX(model_ref, t_mesh)
@@ -98,8 +98,8 @@ theory = DualTRILEX(model_ref, t_mesh)
 theory.compute_ref_init_state(T, verbosity=1)
 
 # Set local Hubbard interaction and energy level on site 0 after quench
-model_ref.U[0] = U1
-model_ref.t[0, 0] = -mu1
+model_ref.local_int[0] = U1
+model_ref.hopping[0, 0] = -mu1
 
 # Reference system GF
 params = {}

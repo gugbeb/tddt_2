@@ -5,7 +5,7 @@
 from triqs.gf import MeshReTime
 
 from .keldysh import KeldyshGF, conv
-from .models import FiniteSystem
+from .models import FiniteCluster
 
 
 class DualTRILEX:
@@ -13,7 +13,7 @@ class DualTRILEX:
     Implementation of the "single-shot" dual TRILEX theory.
     """
 
-    def __init__(self, system_ref: FiniteSystem, t_mesh: MeshReTime):
+    def __init__(self, system_ref: FiniteCluster, t_mesh: MeshReTime):
         r"""
         Initialize a dual TRILEX calculation.
 

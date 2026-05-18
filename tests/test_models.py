@@ -13,7 +13,7 @@ from tddt.models import (spin_names,
                          SingleFermion,
                          FermionBand,
                          FermionFlatBand,
-                         SquarePlaquette)
+                         FiniteCluster)
 
 
 class TestFermion(unittest.TestCase):
@@ -136,18 +136,16 @@ class TestFermion(unittest.TestCase):
         self.assertAlmostEqual(g3.lesser()[t2, t0], 0.00118654 - 0.00477684j)
 
 
-class TestSquarePlaquette(unittest.TestCase):
-    "A square-shaped cluster of a 2D square lattice"
+class TestFiniteCluster(unittest.TestCase):
+    "A finite cluster"
 
     gf_struct_ref = [('up', 4), ('dn', 4)]
     fops_ref = set([('up', 0), ('up', 1), ('up', 2), ('up', 3),
                     ('dn', 0), ('dn', 1), ('dn', 2), ('dn', 3)])
 
     def test_zero(self):
-        model = SquarePlaquette(2)
-        self.assertEqual(model.N, 2)
-        self.assertEqual(len(model.r_mesh), 4)
-        self.assertEqual(len(model.k_mesh), 4)
+        model = FiniteCluster([(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0)])
+        self.assertEqual(model.N, 4)
         self.assertEqual(model.gf_struct, self.gf_struct_ref)
         self.assertEqual(model.fops, self.fops_ref)
         self.assertTrue(model.hamiltonian.is_zero())
@@ -160,16 +158,14 @@ class TestSquarePlaquette(unittest.TestCase):
         local_int = [2.0, 0, 0, 3.0]
         nonlocal_int = np.zeros((4, 4))
         nonlocal_int[1, 2] = nonlocal_int[2, 1] = 7
-        model = SquarePlaquette(
-            N=2,
+        model = FiniteCluster(
+            [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0)],
             hopping=hopping,
             local_int=local_int,
             nonlocal_int=nonlocal_int,
-            vector_potential=(0.5, -0.5)
+            vector_potential=(0.5, -0.5, 0)
         )
-        self.assertEqual(model.N, 2)
-        self.assertEqual(len(model.r_mesh), 4)
-        self.assertEqual(len(model.k_mesh), 4)
+        self.assertEqual(model.N, 4)
         self.assertEqual(model.gf_struct, self.gf_struct_ref)
         self.assertEqual(model.fops, self.fops_ref)
 
@@ -193,7 +189,8 @@ class TestSquarePlaquette(unittest.TestCase):
         eps = ti(t_mesh, [t.value ** 2 for t in t_mesh])
         U = ti(t_mesh, [t.value ** 0.5 for t in t_mesh])
         A = (ti(t_mesh, [0.5 * cos(2.1 * t) for t in t_mesh]),
-             ti(t_mesh, [-0.5 * cos(2.1 * t) for t in t_mesh]))
+             ti(t_mesh, [-0.5 * cos(2.1 * t) for t in t_mesh]),
+             0)
         # Peierls factors
         p12 = ti(t_mesh, [exp(1j * cos(2.1 * t)) for t in t_mesh])
         p21 = ti(t_mesh, [exp(-1j * cos(2.1 * t)) for t in t_mesh])
@@ -205,16 +202,14 @@ class TestSquarePlaquette(unittest.TestCase):
         local_int = [U, 0, 0, 3.0]
         nonlocal_int = np.zeros((4, 4))
         nonlocal_int[1, 2] = nonlocal_int[2, 1] = 7
-        model = SquarePlaquette(
-            N=2,
+        model = FiniteCluster(
+            [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0)],
             hopping=hopping,
             local_int=local_int,
             nonlocal_int=nonlocal_int,
             vector_potential=A
         )
-        self.assertEqual(model.N, 2)
-        self.assertEqual(len(model.r_mesh), 4)
-        self.assertEqual(len(model.k_mesh), 4)
+        self.assertEqual(model.N, 4)
         self.assertEqual(model.gf_struct, self.gf_struct_ref)
         self.assertEqual(model.fops, self.fops_ref)
 
