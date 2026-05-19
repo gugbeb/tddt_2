@@ -1,4 +1,3 @@
-from enum import Enum
 from itertools import product
 import numpy as np
 
@@ -7,18 +6,9 @@ from triqs.gf import MeshReTime, Gf
 from triqs.gf import MeshProduct # A direct product of 1D meshes
 
 from realevol.tinterp import TInterp as ti
-from realevol.init_state import make_equilibrium_init_state
-from realevol.realevol import compute_expectval
 
 #from tddt.keldysh import Branch, KeldyshGF, from_lesser_greater, conv
 from tddt.keldysh import Branch, KeldyshGF, conv
-from tddt.realevol import (
-    compute_keldysh_gf,
-    compute_keldysh_gf_element,
-    compute_keldysh_correlator_2t,
-    compute_keldysh_conn_correlator_2t,
-    compute_keldysh_vertex3
-)
 from tddt.dtrilex import (DualTRILEX,
                           polarization_2nd_order,
                           selfenergy_2nd_order,
@@ -92,7 +82,9 @@ model_ref = FiniteCluster(
     vector_potential=(Ax_t, Ay_t, 0)
 )
 
-theory = DualTRILEX(model_ref, t_mesh)
+theory = DualTRILEX(model_ref, t_mesh,
+                    imp_states_up=[('up', 0)],
+                    imp_states_dn=[('dn', 0)])
 
 # Compute initial thermal state of the reference system
 theory.compute_ref_init_state(T, verbosity=1)
@@ -101,16 +93,10 @@ theory.compute_ref_init_state(T, verbosity=1)
 model_ref.local_int[0] = U1
 model_ref.hopping[0, 0] = -mu1
 
-# Reference system GF
-params = {}
-params['verbosity'] = 2
-params['hamiltonian_interpol'] = 'Trapezoid'
-params['lanczos_min_matrix_size'] = 40
-gf_ref = compute_keldysh_gf(model_ref.gf_struct,
-                            init_state_ref,
-                            model_ref.hamiltonian,
-                            t_mesh,
-                            params)
+# Compute correlation functions of the reference system
+theory.compute_ref_correlators(verbosity=2,
+                               hamiltonian_interpol='Trapezoid',
+                               lanczos_min_matrix_size=40)
 
 def write_keldysh_gf_file(filename, g, k_point=None, target_indices=()):
     """
@@ -130,11 +116,12 @@ def write_keldysh_gf_file(filename, g, k_point=None, target_indices=()):
             file.write("{} {} {} {}\n".format(*col_data))
 
 write_keldysh_gf_file('data/tddt_ref_sys_t0_00.txt',
-                      gf_ref['up'], target_indices=(0, 0))
+                      theory.g_ref, target_indices=(0, 0, 0, 0))
 write_keldysh_gf_file('data/tddt_ref_sys_t0_01.txt',
-                      gf_ref['up'], target_indices=(0, 1))
+                      theory.g_ref, target_indices=(0, 0, 0, 1))
 
-tt_mesh = MeshProduct(t_mesh, t_mesh)
+# TODO
+exit()
 
 # k-mesh
 lat = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # 2D square lattice
@@ -149,14 +136,6 @@ nkz = 1
 tk_mesh = MeshProduct(t_mesh, bz_mesh)
 ttk_mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 tttk_mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
-
-# TODO: Move to tddt/dtrilex.py
-#class Channel(Enum):
-#    "Bosonic channel."
-#    CHARGE = 0
-#    "Charge channel"
-#    SPIN = 1
-#    "Spin channel"
 
 Uch = U/2
 Usp = -U/2
@@ -217,17 +196,6 @@ gimp0 = SingleFermion(ex).gf(t_mesh, n=0.5)
 gimp0p = SingleFermion(exx).gf(t_mesh, n=0.1)
 gimp0m = SingleFermion(-exx).gf(t_mesh, n=0.9)
 
-gimp = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,))) # GF for site 0 of the reference system
-gref = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,4), (2,4))) # time, time, spin, site, spin, site for example: (11, 11, 2, 5, 2, 5)
-
-for br1, br2 in product(Branch, Branch):
-    gimp[br1,br2][0,0].data[...] = gf_ref['up'][br1,br2].data[...,0,0]
-    gimp[br1,br2][1,1].data[...] = gf_ref['dn'][br1,br2].data[...,0,0]
-    for i in range(4): # sites
-        gref[br1,br2].data[...,0,i,0,i] = gf_ref['up'][br1,br2].data[...,i,i]
-        gref[br1,br2].data[...,1,i,1,i] = gf_ref['dn'][br1,br2].data[...,i,i]
-
-
 # Hybridisation function delta and Dual_reg GF0
 delta = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
 
@@ -286,40 +254,6 @@ for br1, br2 in product(Branch, Branch):
 Gd0_reg = solve_vie2(F, Q)
 del F
 
-
-arg_index_shapes = ((2,), # ch = 0, sp = 1
-                    (2,))
-
-# Generator of scalar-valued elements
-def generator_susc_imp(ind1, ind2):
-    channel1 = ind1
-    channel2 = ind2
-
-    def get_operator(ind1, ind2):
-        if ind1 == ind2 and ind1 == (0,):
-            return (n('up',0) + n('dn',0))
-        elif ind1 == ind2 and ind1 == (1,):
-            return (n('up',0) - n('dn',0))
-        else:
-            return None
-
-    operator = get_operator(ind1, ind2)
-    #print(operator)
-    if operator:
-        #print('operator after if: ', operator)
-        g_el = -1j * compute_keldysh_conn_correlator_2t(operator,
-                                        operator,
-                                        init_state,
-                                        h,
-                                        t_mesh,
-                                        params)
-        return g_el
-    else:
-        g_el = KeldyshGF(mesh=tt_mesh)
-        return g_el
-
-susc_imp = KeldyshGF.from_arg_index_gen(generator_susc_imp, mesh=tt_mesh, arg_index_shapes=arg_index_shapes)
-
 susc_imp_U = KeldyshGF(mesh=tt_mesh, arg_index_shapes=arg_index_shapes)
 for br1, br2 in product(Branch, Branch):
     susc_imp_U[br1,br2].data[:,:,0,0] = susc_imp[br1,br2].data[:,:,0,0]*Uch
@@ -329,37 +263,6 @@ for br1, br2 in product(Branch, Branch):
 # Impurity polarization
 
 pi_imp = solve_vie2(susc_imp_U, susc_imp)
-
-
-# Vertex
-arg_index_shapes = ((2,), #((2, 3),    # \sigma_1, l_1
-                    (2,), #(2, 3),    # \sigma_2, l_2
-                    (2,)) #(4, 3, 3)) # \varsigma, l_3, l_4
-
-
-# Generator of scalar-valued elements
-def generator_three_point_vertex(ind1, ind2, ind3):
-    spin1 = ind1
-    spin2 = ind2
-    channel = ind3
-
-    #def get_operator(ind1, ind2, ind3):
-    c_index = ('up', 0) if spin1 == (0,) else ('dn', 0)
-    c_dag_index = ('up', 0) if spin2 == (0,) else ('dn', 0)
-    n_op = n('up', 0) + n('dn', 0) if channel == (0,) else n('up', 0) - n('dn', 0)
-
-    g_el = compute_keldysh_vertex3(c_index, # c_indices
-                                   c_dag_index , # c_dag_indices
-                                   n_op, # n_op
-                                   init_state,
-                                   h,
-                                   t_mesh,
-                                   params)
-    return g_el
-
-
-three_point_corr = KeldyshGF.from_arg_index_gen(generator_three_point_vertex, mesh=MeshProduct(t_mesh, t_mesh, t_mesh), arg_index_shapes=arg_index_shapes)
-
 
 U_pi_imp = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,),(2,)))
 for br1, br2 in product(Branch, Branch):

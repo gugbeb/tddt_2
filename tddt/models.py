@@ -225,6 +225,14 @@ class FiniteCluster:
         "Fundamental operator set of this model"
         return set(product(spin_names, list(range(self.N))))
 
+    def spin_states(self, spin: int):
+        r"""
+        A list of (block index, inner index) pairs corresponding to the states
+        with a certain spin projection (spin=0 -> up, spin=1 -> down).
+        """
+        assert 0 <= spin <= 1
+        return [(spin_names[spin], i) for i in range(self.N)]
+
     @property
     def gf_struct(self):
         "Structure of TRIQS BlockGf object"
