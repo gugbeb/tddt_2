@@ -2,26 +2,18 @@ from itertools import product
 import numpy as np
 
 import triqs.utility.mpi  # noqa: F401
-from triqs.gf import MeshReTime, Gf
-from triqs.gf import MeshProduct # A direct product of 1D meshes
+from triqs.gf import MeshReTime, MeshBrZone, MeshProduct, Gf
+from triqs.lattice import BravaisLattice, BrillouinZone
 
 from realevol.tinterp import TInterp as ti
 
-#from tddt.keldysh import Branch, KeldyshGF, from_lesser_greater, conv
-from tddt.keldysh import Branch, KeldyshGF, conv
-from tddt.dtrilex import (DualTRILEX,
-                          polarization_2nd_order,
-                          selfenergy_2nd_order,
-                          selfenergy_2nd_order_hf)
-
-#from tddt.keldysh import Branch, lesser, greater, retarded, advanced
-from tddt.keldysh import ContourPoint
-from tddt.keldysh import herm_conj
-from tddt.keldysh import Singular2PKeldyshGF
-
-# Import some TRIQS modules related to lattice
-from triqs.lattice import BravaisLattice, BrillouinZone
-from triqs.gf import MeshBrZone
+from tddt.keldysh import (Branch,
+                          ContourPoint,
+                          KeldyshGF,
+                          Singular2PKeldyshGF,
+                          conv,
+                          herm_conj)
+from tddt.dtrilex import DualTRILEX
 
 from tddt.lattice import local_part
 from tddt.models import SingleFermion, FiniteCluster
@@ -32,21 +24,37 @@ np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 ############################ Time meshes #######################################
 t_max = 10.0
 n_t = 51
+# Time mesh for correlation functions
 t_mesh = MeshReTime(0, t_max, n_t)
 # Time mesh used to construct interpolators
 ti_mesh = MeshReTime(0, t_max, 5001)
 
 ########################## Lattice problem #####################################
 
+n_k = 2             # Number of k-points along each dimension
 t_nn = 1.0          # Nearest neighbor hopping
 t_nnn = 0.0         # Next nearest neighbor hopping
 
 # Vector potential: Amplitude and frequency
 A = 0.0
 Omega = 4.0
-# Time-dependent vector potential (x- and y-component)
-Ax_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
-Ay_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
+
+lat = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # 2D square lattice
+bz_mesh = MeshBrZone(BrillouinZone(lat), n_k)       # k-mesh on 1BZ; 0 - 2pi
+
+# Lattice dispersion \eps(t, k)_{\sigma,l,\sigma',l'}
+eps_tk = Gf(
+    mesh=MeshProduct(t_mesh, bz_mesh),
+    target_shape=(2, 1, 2, 1)  # 2 spins, 1 orbital
+)
+
+for t, k in eps_tk.mesh:
+    k_shift = A * np.cos(Omega * t.value)
+    for spin in range(2):
+        eps_tk[t, k][spin, 0, spin, 0] = \
+            2 * t_nn * (np.cos(k[0] - k_shift) + np.cos(k[1] - k_shift)) \
+            + 4 * t_nnn * np.cos(2 * (k[0] - k_shift)) \
+                        * np.cos(2 * (k[1] - k_shift))
 
 ########################## Reference system ####################################
 
@@ -63,6 +71,10 @@ exx = 3.0
 # Hopping amplitudes between site 0 and the uncorrelated sites are txx, txx, tx
 tx = 0.7 * t_nn
 txx = 1.0 * t_nn
+
+# Time-dependent vector potential (x- and y-component)
+Ax_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
+Ay_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
 
 # Temperature
 T = 0.0
@@ -123,42 +135,19 @@ write_keldysh_gf_file('data/tddt_ref_sys_t0_01.txt',
 # TODO
 exit()
 
-# k-mesh
-lat = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # 2D square lattice
-bz = BrillouinZone(lat)  # Brillouin zone of the lattice
-n_k = 2 # Number of k-points along each dimension
-bz_mesh = MeshBrZone(bz, n_k) # k-mesh on 1BZ; 0 - 2pi
-nkx = n_k
-nky = n_k
-nkz = 1
-
 # mixed-mesh
 tk_mesh = MeshProduct(t_mesh, bz_mesh)
 ttk_mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
 tttk_mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
 
-Uch = U/2
-Usp = -U/2
 Uch = U1/2
 Usp = -U1/2
 
-# Lattice dispersion
-#eps_tk = Gf(mesh=tk_mesh, target_shape=(2, 2))
-
-#for t, k in tk_mesh:
-#    #eps_tk[t, k] = -2 * np.array([[[1, 0], [0, -1]]]) * np.cos(t.value) * (np.cos(k[0]) + np.cos(k[1]))
-#    eps_tk[t, k][0, 0] = 2.0*t1*(np.cos(k[0]-A*np.cos(Omega * t.value))+np.cos(k[1]-A*np.cos(Omega * t.value))) \
-#                         +4.0*t2*np.cos(2*(k[0]-A*np.cos(Omega * t.value)))*np.cos(2*(k[1]-A*np.cos(Omega * t.value)))
-#    eps_tk[t, k][1, 1] = 2.0*t1*(np.cos(k[0]-A*np.cos(Omega * t.value))+np.cos(k[1]-A*np.cos(Omega * t.value))) \
-#                         +4.0*t2*np.cos(2*(k[0]-A*np.cos(Omega * t.value)))*np.cos(2*(k[1]-A*np.cos(Omega * t.value)))
-
+# TODO: move to tddt/dtrilex.py
 #eps_loc = np.mean(eps_tk.data, axis = 1)
-
 #for t, k in tk_mesh:
 #    eps_tk[t, k] = eps_tk[t, k] - eps_loc[t.index, :]
-
 #eps_s2p_K = Singular2PKeldyshGF.from_retime(eps_tk)
-
 
 # Dispersion reference system
 #TODO: compare to dt_pos/ dt_neg
@@ -177,11 +166,15 @@ Usp = -U1/2
 #    Vq = 0.0
 #    return Vq
 
-
-# Bare lattice interaction
-#Uq = Gf(mesh=tk_mesh, target_shape=(2, 2))
+# Bare lattice interaction U(t, q)_{\varsigma,i,j,\varsigma',i',j'}
+##Uq = Gf(mesh=tk_mesh, target_shape=(2, 2))
+#U_qt = Gf(
+#    mesh=MeshProduct(t_mesh, bz_mesh),
+#    target_shape=(2, 1, 1, 2, 1, 1)  # 2 channels, 1 orbital
+#)
 #Uq_tilde = Gf(mesh=tk_mesh, target_shape=(2, 2))
 
+# TODO
 #for t, k in tk_mesh:
 #    Uq[t, k][0,0] = Uch + Vq(k, 0) # charge
 #    Uq[t, k][1,1] = Usp + Vq(k, 1) # spin
@@ -561,8 +554,7 @@ for time1, time2 in tt_mesh:
             Gd0_full_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_full_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
 
 
-k0 = list(bz_mesh)[0]
-k1 = list(bz_mesh)[1]
+k0, k1 = list(bz_mesh)[:2]
 write_keldysh_gf_file("data/tddt_Gd0_R_k0.txt",
                       Gd0_full_R, k_point=k0, target_indices=(0, 0))
 write_keldysh_gf_file("data/tddt_Gd0_R_k1.txt",
