@@ -10,11 +10,12 @@ from scipy.integrate import quad
 
 from triqs.gf import Gf, MeshReTime, MeshBrZone, MeshProduct
 
-from realevol.tinterp import TInterp as ti
+from realevol.tinterp import TInterp as ti, is_constant
 import realevol.operators_tinterp as op
 from realevol.init_state import make_equilibrium_init_state
 
-from .keldysh import KeldyshGF
+from .keldysh import Branch, KeldyshGF, Singular2PKeldyshGF
+from .realevol import is_zero
 from .util import fermi
 
 
@@ -268,3 +269,98 @@ class FiniteCluster:
                                            boson_indices=set(),
                                            temperature=T,
                                            params=kwargs)
+
+    def hybridization(self,
+                      t_mesh: MeshReTime,
+                      imp_sites: list[int],
+                      bath_sites: list[int],
+                      *,
+                      n: Optional[list[float]] = None,
+                      T: Optional[float] = None):
+        """
+        Compute a hybridization function that describes effect of a subset of
+        sites (bath sites) on another subset of sites (impurity sites).
+        Occupations of the bath sites can be specified either directly or
+        via the temperature of the bath.
+
+        :param t_mesh: Time mesh used to construct the hybridization function.
+        :type t_mesh: MeshReTime
+
+        :param imp_sites: List of impurity sites.
+        :type imp_sites: list[int]
+
+        :param bath_sites: List of bath sites.
+        :type bath_sites: list[int]
+
+        :param n: Occupations of the bath, one element per site.
+        :type n: list[float], optional
+
+        :param T: Temperature of the bath.
+        :type T: float, optional
+        """
+        assert (n is None) ^ (T is None), \
+            "Exactly one of 'n' and 'T' must be specified"
+
+        tt_mesh = MeshProduct(t_mesh, t_mesh)
+        nimp = len(imp_sites)
+        nbath = len(bath_sites)
+        assert nimp > 0, "At least one impurity site is required"
+
+        for ibath in bath_sites:
+            if not is_zero(self.local_int[ibath]):
+                raise RuntimeError(
+                    f"Non-zero local interaction on bath site {ibath}"
+                )
+            if any((not is_zero(self.nonlocal_int[ibath, j]))
+                   or (not is_zero(self.nonlocal_int[j, ibath]))
+                   for j in range(self.N)):
+                raise RuntimeError(
+                    f"Non-zero nonlocal interaction on bath site {ibath}"
+                )
+        if any(not is_zero(self.hopping[bs1, bs2])
+               for bs1, bs2 in product(bath_sites, repeat=2) if bs1 != bs2):
+            raise RuntimeError("Coupled bath sites are not supported")
+
+        # Compute bath GF
+        def make_bath_gf(b1, b2):
+            if b1 != b2:
+                return KeldyshGF(mesh=tt_mesh)
+            bs = bath_sites[b1[0]]
+            eps = self.hopping[bs, bs]
+            if isinstance(eps, ti):
+                if is_constant(eps):
+                    eps = eps(0)
+                else:
+                    raise RuntimeError("Bath state energies must be constant")
+            sf = SingleFermion(eps)
+            return sf.gf(t_mesh, T=T) \
+                if (T is not None) else sf.gf(t_mesh, n=n[b1[0]])
+
+        g_bath = KeldyshGF.from_arg_index_gen(
+            make_bath_gf, mesh=tt_mesh, arg_index_shapes=((nbath,), (nbath,))
+        )
+
+        # Impurity-bath and bath-impurity hopping matrices
+        Vib = Gf(mesh=t_mesh, target_shape=(nimp, nbath))
+        Vbi = Gf(mesh=t_mesh, target_shape=(nbath, nimp))
+        for (i, imps), (b, bs) in product(enumerate(imp_sites),
+                                          enumerate(bath_sites)):
+            vib = self.hopping[imps, bs] * self.peierls[imps, bs]
+            vbi = self.hopping[bs, imps] * self.peierls[bs, imps]
+            for t in t_mesh:
+                Vib[t][i, b] = vib(t.value) if isinstance(vib, ti) else vib
+                Vbi[t][b, i] = vbi(t.value) if isinstance(vbi, ti) else vbi
+
+        # Hybridization function (single spin)
+        delta = Singular2PKeldyshGF.from_retime(Vib) \
+            @ g_bath \
+            @ Singular2PKeldyshGF.from_retime(Vbi)
+
+        # Add spin indices to the hybridization function
+        Delta = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2, nimp), (2, nimp)))
+        for br in product(Branch, repeat=2):
+            for spin in range(2):
+                for i1, i2 in product(range(nimp), repeat=2):
+                    Delta[br][spin, i1, spin, i2] = delta[br][i1, i2]
+
+        return Delta

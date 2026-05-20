@@ -8,7 +8,6 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 from realevol.tinterp import TInterp as ti
 
 from tddt.keldysh import (Branch,
-                          ContourPoint,
                           KeldyshGF,
                           Singular2PKeldyshGF,
                           conv,
@@ -16,7 +15,7 @@ from tddt.keldysh import (Branch,
 from tddt.dtrilex import DualTRILEX
 
 from tddt.lattice import local_part
-from tddt.models import SingleFermion, FiniteCluster
+from tddt.models import FiniteCluster
 from tddt.vie2 import solve_vie2
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
@@ -77,17 +76,17 @@ Ax_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
 Ay_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
 
 # Temperature
-T = 0.0
+T = 0.01
 
 # Reference system
 model_ref = FiniteCluster(
     # 2x2 plaquette
     [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0)],
     # Hopping matrix
-    hopping=[[-mu, txx, txx,  tx],
-             [txx, exx, 0,    0 ],
-             [txx, 0,   -exx, 0 ],
-             [tx,  0,   0,    ex]],
+    hopping=[[-mu, txx, txx,  tx],                            # noqa: E202, E241
+             [txx, exx, 0,    0 ],                            # noqa: E202, E241
+             [txx, 0,   -exx, 0 ],                            # noqa: E202, E241
+             [tx,  0,   0,    ex]],                           # noqa: E202, E241
     # Local interaction
     local_int=[U, 0, 0, 0],
     # Vector potential: Components along the two Cartesian axes
@@ -110,38 +109,20 @@ theory.compute_ref_correlators(verbosity=2,
                                hamiltonian_interpol='Trapezoid',
                                lanczos_min_matrix_size=40)
 
-def write_keldysh_gf_file(filename, g, k_point=None, target_indices=()):
-    """
-    Write (FW, FW) and (FW, BW) components of a 2-point KeldyshGF object to a text file.
-    """
-    FW, BW = Branch
-    t_mesh = g.time_mesh.components[1]
-    t0 = next(iter(t_mesh))
-    with open(filename, 'w') as file:
-        file.write("# Re (FW, FW) Im (FW, FW) Re (FW, BW) Im (FW, BW)\n")
-        for t in t_mesh:
-            mesh_point = (t0, t) if (k_point is None) else (t0, t, k_point)
-            col_data = (g[FW, FW][*mesh_point][*target_indices].real,
-                        g[FW, FW][*mesh_point][*target_indices].imag,
-                        g[FW, BW][*mesh_point][*target_indices].real,
-                        g[FW, BW][*mesh_point][*target_indices].imag)
-            file.write("{} {} {} {}\n".format(*col_data))
+###################### Construct a hybridization function ######################
 
-write_keldysh_gf_file('data/tddt_ref_sys_t0_00.txt',
-                      theory.g_ref, target_indices=(0, 0, 0, 0))
-write_keldysh_gf_file('data/tddt_ref_sys_t0_01.txt',
-                      theory.g_ref, target_indices=(0, 0, 0, 1))
+# Hybridization of site 0 with impurity sites 1, 2, 3
+Delta = model_ref.hybridization(theory.t_mesh, [0], [1, 2, 3], T=T)
 
-# TODO
 exit()
 
 # mixed-mesh
-tk_mesh = MeshProduct(t_mesh, bz_mesh)
-ttk_mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
-tttk_mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
+#tk_mesh = MeshProduct(t_mesh, bz_mesh)
+#ttk_mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
+#tttk_mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
 
-Uch = U1/2
-Usp = -U1/2
+#Uch = U1/2
+#Usp = -U1/2
 
 # TODO: move to tddt/dtrilex.py
 #eps_loc = np.mean(eps_tk.data, axis = 1)
@@ -183,26 +164,6 @@ Usp = -U1/2
 
 #Uq_s2p_K = Singular2PKeldyshGF.from_retime(Uq)
 #Uq_tilde_s2p_K = Singular2PKeldyshGF.from_retime(Uq_tilde)
-
-# Bare impurity GF for 3 bath sites
-gimp0 = SingleFermion(ex).gf(t_mesh, n=0.5)
-gimp0p = SingleFermion(exx).gf(t_mesh, n=0.1)
-gimp0m = SingleFermion(-exx).gf(t_mesh, n=0.9)
-
-# Hybridisation function delta and Dual_reg GF0
-delta = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
-
-for sp in (0,1):
-    for br1, br2 in product(Branch, Branch):
-        for time1, time2 in tt_mesh:
-            z1 = ContourPoint(br1, time1)
-            z2 = ContourPoint(br2, time2)
-            print('V: ', V(tx,  'x',+1,time1.linear_index))
-            print('gimp0: ', gimp0[z1,z2])
-            delta[z1,z2][sp,sp] = V(tx,'x',+1,time1.linear_index) * gimp0[z1,z2] * V(tx,'x',-1,time2.linear_index) \
-                                    + V(txx,'x',+1,time1.linear_index) * gimp0p[z1,z2] * V(txx,'x',-1,time2.linear_index) \
-                                    + V(txx,'x',-1,time1.linear_index) * gimp0m[z1,z2] * V(txx,'x',+1,time2.linear_index)
-
 
 eps_gimp = eps_s2p_K @ gimp
 eps_gimp_eps = eps_gimp @ eps_s2p_K
@@ -553,6 +514,30 @@ for time1, time2 in tt_mesh:
             Gd0_full_K = Gd0_K_full[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
             Gd0_full_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_full_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
 
+######################## Write results into text files #########################
+
+def write_keldysh_gf_file(filename, g, k_point=None, target_indices=()):
+    """
+    Write (FW, FW) and (FW, BW) components of a 2-point KeldyshGF
+    object to a text file.
+    """
+    FW, BW = Branch
+    t_mesh = g.time_mesh.components[1]
+    t0 = next(iter(t_mesh))
+    with open(filename, 'w') as file:
+        file.write("# Re (FW, FW) Im (FW, FW) Re (FW, BW) Im (FW, BW)\n")
+        for t in t_mesh:
+            mesh_point = (t0, t) if (k_point is None) else (t0, t, k_point)
+            col_data = (g[FW, FW][*mesh_point][*target_indices].real,
+                        g[FW, FW][*mesh_point][*target_indices].imag,
+                        g[FW, BW][*mesh_point][*target_indices].real,
+                        g[FW, BW][*mesh_point][*target_indices].imag)
+            file.write("{} {} {} {}\n".format(*col_data))
+
+write_keldysh_gf_file('data/tddt_ref_sys_t0_00.txt',
+                      theory.g_ref, target_indices=(0, 0, 0, 0))
+write_keldysh_gf_file('data/tddt_ref_sys_t0_01.txt',
+                      theory.g_ref, target_indices=(0, 0, 0, 1))
 
 k0, k1 = list(bz_mesh)[:2]
 write_keldysh_gf_file("data/tddt_Gd0_R_k0.txt",

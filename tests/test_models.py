@@ -2,18 +2,19 @@ import unittest
 from itertools import product
 import numpy as np
 
-from triqs.gf import MeshReTime, MeshBrZone, MeshProduct
+from triqs.gf import MeshReTime, MeshBrZone, MeshProduct, Gf
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from realevol.tinterp import TInterp as ti
 import realevol.operators_tinterp as op
 
-from tddt.keldysh import Branch, ContourPoint
+from tddt.keldysh import Branch, ContourPoint, KeldyshGF
 from tddt.models import (spin_names,
                          SingleFermion,
                          FermionBand,
                          FermionFlatBand,
                          FiniteCluster)
+from tddt.testing import assert_keldysh_gf_almost_equal
 
 
 class TestFermion(unittest.TestCase):
@@ -225,6 +226,47 @@ class TestFiniteCluster(unittest.TestCase):
                     * (op.n('up', 2) + op.n('dn', 2))
 
         self.assertTrue((model.hamiltonian - h_ref).is_zero())
+
+    def test_hybridization(self):
+        from cmath import cos, exp
+
+        t_mesh = MeshReTime(0, 10.0, 101)
+        tt_mesh = MeshProduct(t_mesh, t_mesh)
+        ed = 2.0
+        eps = [-1.0, 0.0, 1.0]
+        V = [0.3, 0.4, 0.5]
+        hopping = np.diag([ed, *eps]).astype(object)
+        for bs, v in enumerate(V):
+            v_t = ti(t_mesh, [v * cos(2 * t) for t in t_mesh])
+            hopping[0, bs + 1] = hopping[bs + 1, 0] = v_t
+
+        local_int = [2.0, 0, 0, 0]
+        A = (0.1, 0.2, 0)
+        T = 0.1
+
+        coords = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        model = FiniteCluster(coords,
+                              hopping=hopping,
+                              local_int=local_int,
+                              vector_potential=A)
+        Delta = model.hybridization(t_mesh, [0], [1, 2, 3], T=T)
+
+        Delta_ref_g = Gf(mesh=tt_mesh, target_shape=(2, 1, 2, 1))
+        Delta_ref_l = Gf(mesh=tt_mesh, target_shape=(2, 1, 2, 1))
+        for e, v, c in zip(eps, V, coords[1:]):
+            occ = 1 / (1 + exp(e / T))
+            for time1, time2 in tt_mesh:
+                ex = exp(-1j * e * (time1 - time2))
+                v_t1 = v * cos(2 * time1)
+                v_t2 = v * cos(2 * time2)
+                val_g = -1j * (1.0 - occ) * ex * v_t1 * v_t2
+                val_l = -1j * (-occ) * ex * v_t1 * v_t2
+                for spin in range(2):
+                    Delta_ref_g[time1, time2][spin, 0, spin, 0] += val_g
+                    Delta_ref_l[time1, time2][spin, 0, spin, 0] += val_l
+        Delta_ref = KeldyshGF.from_lesser_greater(Delta_ref_l, Delta_ref_g)
+
+        assert_keldysh_gf_almost_equal(Delta, Delta_ref, precision=1e-9)
 
 
 if __name__ == '__main__':
