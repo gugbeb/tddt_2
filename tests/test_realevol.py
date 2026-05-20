@@ -7,6 +7,7 @@ from numpy.testing import assert_array_almost_equal
 import triqs.utility.mpi  # noqa: F401
 from triqs.gf import MeshReTime, Gf
 
+from realevol.texpr import TExpr as te
 from realevol.tinterp import TInterp as ti
 from realevol.operators_tinterp import c, c_dag, n
 from realevol.init_state import make_equilibrium_init_state
@@ -14,6 +15,7 @@ from realevol.realevol import compute_expectval
 
 from tddt.keldysh import Branch, KeldyshGF
 from tddt.realevol import (
+    is_zero,
     compute_keldysh_gf,
     compute_keldysh_gf_element,
     compute_keldysh_correlator_2t,
@@ -65,6 +67,21 @@ class TestRealevol(unittest.TestCase):
         cls.params = {}
         cls.params['verbosity'] = 2
         cls.params['lanczos_min_matrix_size'] = 10000
+
+    @pytest.mark.mpi
+    def test_is_zero(self):
+        self.assertTrue(is_zero(te(0)))
+        self.assertTrue(is_zero(te("0", "0")))
+        self.assertFalse(is_zero(te(1)))
+        self.assertFalse(is_zero(te("t", "t")))
+        self.assertTrue(is_zero(ti(self.t_mesh, np.zeros(self.n_t))))
+        self.assertFalse(is_zero(ti(self.t_mesh, np.arange(self.n_t))))
+        self.assertTrue(is_zero(0))
+        self.assertTrue(is_zero(0.0))
+        self.assertTrue(is_zero(0.0j))
+        self.assertFalse(is_zero(1))
+        self.assertFalse(is_zero(1.0j))
+        self.assertFalse(is_zero(1.0j))
 
     @pytest.mark.mpi
     def test_compute_keldysh_gf(self):

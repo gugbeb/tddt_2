@@ -7,6 +7,8 @@ import numpy as np
 import scipy  # noqa: F401
 
 from triqs.gf import Gf
+from realevol import texpr
+from realevol import tinterp
 from realevol import operators_texpr
 from realevol import operators_tinterp
 from realevol.realevol import (
@@ -28,6 +30,16 @@ def _select_op_module(op):
         return operators_tinterp
     else:
         raise TypeError("Unexpected operator type")
+
+
+def is_zero(x):
+    "Unified zero-value check for TExpr, TInterp and other numeric types"
+    if isinstance(x, texpr.TExpr):
+        return texpr.is_zero(x)
+    elif isinstance(x, tinterp.TInterp):
+        return tinterp.is_zero(x)
+    else:
+        return x == 0
 
 
 def compute_keldysh_gf(gf_struct, init_state, h, t_mesh, params):
