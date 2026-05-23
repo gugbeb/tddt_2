@@ -75,7 +75,8 @@ def local_part(g: Union[KeldyshGF, Singular2PKeldyshGF]) -> \
     return res
 
 
-def _fourier_impl(g_in: Gf, g_out: Gf, mesh_comp_pos: list[int], forward: bool):
+def _fourier_impl(g_in: Gf, g_out: Gf, mesh_comp_pos: list[int],
+                  forward: bool, flip_arg_sign: bool):
     data_axes = ()
     in_data_shape = ()
     out_data_shape = ()
@@ -94,21 +95,26 @@ def _fourier_impl(g_in: Gf, g_out: Gf, mesh_comp_pos: list[int], forward: bool):
     in_data_shape += g_in.target_shape
     out_data_shape += g_out.target_shape
 
-    func = np.fft.fftn if forward else np.fft.ifftn
+    func = np.fft.fftn if (forward ^ flip_arg_sign) else np.fft.ifftn
     func(np.reshape(g_in.data, in_data_shape),
          axes=data_axes,
-         norm="forward",
+         norm="backward" if flip_arg_sign else "forward",
          out=np.reshape(g_out.data, out_data_shape))
 
 
 def lattice_fourier(g: Union[KeldyshGF, Singular2PKeldyshGF],
-                    apply_to: SpacialArgs = SpacialArgs.BOTH) -> \
+                    apply_to: SpacialArgs = SpacialArgs.BOTH,
+                    flip_arg_sign: bool = False) -> \
         Union[KeldyshGF, Singular2PKeldyshGF]:
     r"""
     Given a contour function 'g', apply a lattice Fourier transform to each
     MeshBrZone (if apply_to == SpacialArgs.BRZONE) or MeshCycLat
     (if apply_to == SpacialArgs.LATTICE) component of the mesh.
     apply_to == SpacialArgs.BOTH results in a transformation of both mesh types.
+
+    Setting `flip_arg_sign = True` flips the sign of the arguments of the
+    resulting function, i.e. the result is computed at -r instead of r and/or
+    at -k instead of k.
     """
 
     # Positions of MeshBrZone mesh components
@@ -134,7 +140,8 @@ def lattice_fourier(g: Union[KeldyshGF, Singular2PKeldyshGF],
         g_res = type(g_tmp)(mesh=MeshProduct(*mesh_comps),
                             arg_index_shapes=g_tmp.arg_index_shapes)
         for br in product(Branch, repeat=g.components.ndim):
-            _fourier_impl(g_tmp[br], g_res[br], mesh_brzone_pos, True)
+            _fourier_impl(g_tmp[br], g_res[br], mesh_brzone_pos,
+                          True, flip_arg_sign)
         g_tmp = g_res
 
     # Perform Fourier transform w.r.t. r-arguments
@@ -147,7 +154,8 @@ def lattice_fourier(g: Union[KeldyshGF, Singular2PKeldyshGF],
         g_res = type(g_tmp)(mesh=MeshProduct(*mesh_comps),
                             arg_index_shapes=g_tmp.arg_index_shapes)
         for br in product(Branch, repeat=g.components.ndim):
-            _fourier_impl(g_tmp[br], g_res[br], mesh_cyclat_pos, False)
+            _fourier_impl(g_tmp[br], g_res[br], mesh_cyclat_pos,
+                          False, flip_arg_sign)
         g_tmp = g_res
 
     return g_tmp
