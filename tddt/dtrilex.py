@@ -20,21 +20,30 @@
 
 """Dual TRILEX theory"""
 
+from copy import deepcopy
 from enum import Enum
 from itertools import product
 from typing import Union
+import numpy as np
 
-from triqs.gf import MeshReTime, MeshProduct
+from triqs.gf import MeshReTime, MeshBrZone, MeshProduct, Gf
 
 import realevol.operators_tinterp as op
 
-from .keldysh import Branch, KeldyshGF, conv
+from .keldysh import (Branch,
+                      KeldyshGF,
+                      Singular2PKeldyshGF,
+                      herm_conj,
+                      conv,
+                      target_dot)
 from .models import FiniteCluster
+from .lattice import local_part
 from .realevol import (
     compute_keldysh_gf,
     compute_keldysh_conn_correlator_2t,
     compute_keldysh_vertex3
 )
+from .vie2 import solve_vie2
 
 
 IndicesType = tuple[Union[int, str], Union[int, str]]
@@ -178,11 +187,11 @@ class DualTRILEX:
         )
 
         #
-        # Three-point vertex of the impurity
+        # Three-point correlator of the impurity
         #
 
-        # Generator of scalar-valued elements of the vertex
-        def generator_Lambda_imp(ind1, ind2, ind3):
+        # Generator of scalar-valued elements of the correlator
+        def generator_corr_3t_imp(ind1, ind2, ind3):
             spin1, iimp1 = ind1
             spin2, iimp2 = ind2
             chan, iimp3, iimp4 = ind3
@@ -201,11 +210,129 @@ class DualTRILEX:
                 params=kwargs
             )
 
-        self.Lambda = KeldyshGF.from_arg_index_gen(
-            generator_Lambda_imp,
+        self.corr_3t_imp = KeldyshGF.from_arg_index_gen(
+            generator_corr_3t_imp,
             mesh=self.ttt_mesh,
             arg_index_shapes=((2, Nimp), (2, Nimp), (2, Nimp, Nimp))
         )
+
+    def prepare_dual_diagrams(
+        self, eps_tk: Gf, Delta: KeldyshGF, U_tq: Gf, U_dc: np.array
+    ):
+        r"""
+        Compute bare dual lines and the three-point vertex function necessary
+        to evaluate D-TRILEX diagrams.
+
+        eps_tk: Lattice dispersion \eps_{\sigma,l,\sigma',l'}(t, k).
+        Delta: Hybridization function \Delta(\sigma,l,\sigma',l')(t, t').
+        U_tq: Interaction U^\varsigma_{l_1,l_2,l_3,l_4}(t, q).
+        U_dc: Double-counting interaction shifts U^\varsigma_{l_1,l_2,l_3,l_4}.
+        """
+        Nimp = len(self.imp_states_up)
+
+        assert (isinstance(eps_tk.mesh, MeshProduct)
+                and len(eps_tk.mesh.components) == 2
+                and isinstance(eps_tk.mesh.components[0], MeshReTime)
+                and isinstance(eps_tk.mesh.components[1], MeshBrZone)), \
+            "'eps_tk' must be defined on MeshProduct(MeshReTime, MeshBrZone)"
+        assert eps_tk.target_shape == (2, Nimp, 2, Nimp), \
+            f"For {Nimp} impurity state(s), eps_tk.target_shape " \
+            f"must be {(2, Nimp, 2, Nimp)}"
+
+        assert Delta.mesh == self.tt_mesh, \
+            "'Delta' must be defined on the same time mesh as this object"
+        assert Delta.arg_index_shapes == ((2, Nimp), (2, Nimp)), \
+            f"For {Nimp} impurity state(s), Delta.arg_index_shapes " \
+            f"must be {((2, Nimp), (2, Nimp))}"
+
+        assert eps_tk.mesh == U_tq.mesh, \
+            "'eps_tk' and 'U_tq' must be defined on the same mesh"
+
+        assert U_tq.target_shape == (2, Nimp, Nimp, Nimp, Nimp), \
+            f"For {Nimp} impurity state(s), U_tq.target_shape " \
+            f"must be {(2, Nimp, Nimp, Nimp, Nimp)}."
+
+        assert U_dc.shape == (2, Nimp, Nimp, Nimp, Nimp), \
+            f"For {Nimp} impurity state(s), U_dc.shape " \
+            f"must be {(2, Nimp, Nimp, Nimp, Nimp)}."
+
+        self.eps_tk = Singular2PKeldyshGF.from_retime(eps_tk)
+        eps_loc = local_part(self.eps_tk)
+        for br in Branch:
+            for t, k in self.eps_tk.mesh:
+                self.eps_tk[br][t, k] = self.eps_tk[br][t, k] - eps_loc[br][t,]
+
+        self.U_tq = Singular2PKeldyshGF(
+            mesh=U_tq.mesh,
+            arg_index_shapes=((2, Nimp, Nimp), (2, Nimp, Nimp))
+        )
+        self.tilde_U_tq = deepcopy(self.U_tq)
+
+        for br in Branch:
+            for t, k in self.U_tq.mesh:
+                for ch in range(2):
+                    self.U_tq[br][t, k][ch, :, :, ch, :, :] = U_tq[t, k][ch]
+                    self.tilde_U_tq[br][t, k][ch, :, :, ch, :, :] = \
+                        U_tq[t, k][ch] - 0.5 * U_dc[ch]
+
+        eps_gimp = self.eps_tk @ self.g_imp
+        gimp_eps = self.g_imp @ self.eps_tk
+        eps_gimp_eps = eps_gimp @ self.eps_tk
+
+        Delta_gimp = Delta @ self.g_imp
+        eps_gimp_Delta = eps_gimp @ Delta
+        Delta_gimp_eps = Delta @ gimp_eps
+        Delta_gimp_Delta = Delta_gimp @ Delta
+
+        self.k_mesh = eps_tk.mesh.components[1]
+        ttk_mesh = MeshProduct(self.t_mesh, self.t_mesh, self.k_mesh)
+
+        # Compute bare lines (fermions)
+        Gd0_Q = KeldyshGF(mesh=ttk_mesh,
+                          arg_index_shapes=Delta.arg_index_shapes)
+        for br in product(Branch, repeat=2):
+            for t1, t2, k in Gd0_Q.mesh:
+                Gd0_Q[br][t1, t2, k] = eps_gimp_eps[br][t1, t2, k] \
+                    - Delta_gimp_eps[br][t1, t2, k] \
+                    - eps_gimp_Delta[br][t1, t2, k] \
+                    + Delta_gimp_Delta[br][t1, t2]
+
+        # FIXME: To circumvent the hermiticity check
+        Gd0_Q = 0.5 * (Gd0_Q + herm_conj(Gd0_Q))
+
+        Gd0_F = KeldyshGF(mesh=ttk_mesh,
+                          arg_index_shapes=eps_gimp.arg_index_shapes)
+        for br in product(Branch, repeat=2):
+            for t1, t2, k in Gd0_F.mesh:
+                Gd0_F[br][t1, t2, k] = - eps_gimp[br][t1, t2, k] \
+                    + Delta_gimp[br][t1, t2]
+
+        self.Gd0_reg = solve_vie2(Gd0_F, Gd0_Q)
+        for br in product(Branch, repeat=2):
+            for t1, t2, k in self.Gd0_reg.mesh:
+                self.Gd0_reg[br][t1, t2, k] -= Delta[br][t1, t2]
+
+        # Compute impurity polarization operator
+        # U_dc as a diagonal matrix w.r.t. the channel indices
+        U_dc_ch_mat = np.einsum("cijkl,cd->cijdkl", U_dc, np.eye(2))
+
+        chi_imp_U = target_dot(self.chi_imp, U_dc_ch_mat, 1, (0, 1, 2))
+        self.pi_imp = solve_vie2(chi_imp_U, self.chi_imp)
+
+        # Compute impurity vertex
+        # FIXME: self.corr_3t_imp is already the connected part of
+        # the correlator. Is this correct?
+        U_pi_imp = target_dot(self.pi_imp, U_dc_ch_mat, 0, (3, 4, 5))
+        self.Lambda = self.corr_3t_imp \
+            - conv(self.corr_3t_imp, U_pi_imp, [(2, 0)])
+
+        U_tq_pi_imp = self.U_tq @ self.pi_imp
+        U_tq_pi_imp_U_tq = U_tq_pi_imp @ self.U_tq
+
+        # FIXME: To circumvent the hermiticity check
+        U_tq_pi_imp_U_tq = 0.5 * (U_tq_pi_imp_U_tq
+                                  + herm_conj(U_tq_pi_imp_U_tq))
+        self.W0prime = solve_vie2(-U_tq_pi_imp, U_tq_pi_imp_U_tq)
 
 
 def polarization_2nd_order(Lambda: KeldyshGF, g: KeldyshGF):

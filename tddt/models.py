@@ -50,7 +50,7 @@ class SingleFermion:
         self.eps = eps
 
     def gf(self, t_mesh: MeshReTime, /,
-           n: Optional[float] = None, T: Optional[float] = None):
+           n: Optional[float] = None, T: Optional[float] = None) -> KeldyshGF:
         """
         Single-particle Green's function computed either for a fixed occupation
         'n' or at a fixed temperature 'T'. These two keyword arguments are
@@ -84,7 +84,7 @@ class FermionBand:
         self.eps_k = eps_k
 
     def gf(self, t_mesh: MeshReTime, /,
-           n_k: Optional[float] = None, T: Optional[float] = None):
+           n_k: Optional[float] = None, T: Optional[float] = None) -> KeldyshGF:
         """
         Single-particle Green's function computed either for a fixed k-dependent
         occupation 'n_k' or at a fixed temperature 'T'. These two keyword
@@ -121,7 +121,7 @@ class FermionFlatBand:
         self.D = D
         self.e0 = e0
 
-    def gf(self, t_mesh: MeshReTime, /, T: float):
+    def gf(self, t_mesh: MeshReTime, /, T: float) -> KeldyshGF:
         """
         Single-particle Green's function computed at a fixed temperature 'T'.
         """
@@ -295,7 +295,7 @@ class FiniteCluster:
                       bath_sites: list[int],
                       *,
                       n: Optional[list[float]] = None,
-                      T: Optional[float] = None):
+                      T: Optional[float] = None) -> KeldyshGF:
         """
         Compute a hybridization function that describes effect of a subset of
         sites (bath sites) on another subset of sites (impurity sites).

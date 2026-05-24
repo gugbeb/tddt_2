@@ -32,7 +32,7 @@ from tddt.keldysh import (Branch,
                           Singular2PKeldyshGF,
                           conv,
                           herm_conj)
-from tddt.dtrilex import DualTRILEX
+from tddt.dtrilex import DualTRILEX, Channel
 
 from tddt.lattice import local_part
 from tddt.models import FiniteCluster
@@ -41,6 +41,7 @@ from tddt.vie2 import solve_vie2
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
 ############################ Time meshes #######################################
+
 t_max = 10.0
 n_t = 51
 # Time mesh for correlation functions
@@ -61,25 +62,45 @@ Omega = 4.0
 lat = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # 2D square lattice
 bz_mesh = MeshBrZone(BrillouinZone(lat), n_k)       # k-mesh on 1BZ; 0 - 2pi
 
-# Lattice dispersion \eps(t, k)_{\sigma,l,\sigma',l'}
+# Lattice dispersion \eps_{\sigma,l,\sigma',l'}(t, k)
 eps_tk = Gf(
     mesh=MeshProduct(t_mesh, bz_mesh),
     target_shape=(2, 1, 2, 1)  # 2 spins, 1 orbital
 )
 
 for t, k in eps_tk.mesh:
-    k_shift = A * np.cos(Omega * t.value)
+    A_t = A * np.cos(Omega * t.value)
     for spin in range(2):
         eps_tk[t, k][spin, 0, spin, 0] = \
-            2 * t_nn * (np.cos(k[0] - k_shift) + np.cos(k[1] - k_shift)) \
-            + 4 * t_nnn * np.cos(2 * (k[0] - k_shift)) \
-                        * np.cos(2 * (k[1] - k_shift))
+            2 * t_nn * (np.cos(k[0] - A_t) + np.cos(k[1] - A_t)) \
+            + 4 * t_nnn * np.cos(2 * (k[0] - A_t)) * np.cos(2 * (k[1] - A_t))
+
+# Interaction U^\varsigma_{l_1,l_2,l_3,l_4}(t, q)
+
+U = 6.0             # Hubbard interaction at t=0
+U1 = 4.0            # Hubbard interaction at t>0
+V = 0.2             # Non-local interaction strength
+Uch = U1 / 2
+Usp = -U1 / 2
+
+U_tq = Gf(
+    mesh=MeshProduct(t_mesh, bz_mesh),
+    target_shape=(2, 1, 1, 1, 1)  # 2 channels, 1 orbital
+)
+
+for t, q in U_tq.mesh:
+    V_q = 2 * V * (np.cos(k[0]) + np.cos(k[1]))
+    U_tq[t, q][Channel.CHARGE.value] = Uch + V_q
+    U_tq[t, q][Channel.SPIN.value] = Usp + V_q
+
+# Double-counting interaction shifts
+U_dc = np.zeros((2, 1, 1, 1, 1))  # 2 channels, 1 orbital
+U_dc[Channel.CHARGE.value] = Uch
+U_dc[Channel.SPIN.value] = Usp
 
 ########################## Reference system ####################################
 
 # Correlated plaquette site (0)
-U = 6.0             # Hubbard interaction at t=0
-U1 = 4.0            # Hubbard interaction at t>0
 mu = 0.5 * U        # Chemical potential at t=0
 mu1 = 0.5 * U1      # Chemical potential at t>0
 
@@ -131,132 +152,15 @@ theory.compute_ref_correlators(verbosity=2,
 
 ###################### Construct a hybridization function ######################
 
-# Hybridization of site 0 with impurity sites 1, 2, 3
+# Hybridization of impurity site 0 with bath sites 1, 2, 3
 Delta = model_ref.hybridization(theory.t_mesh, [0], [1, 2, 3], T=T)
 
-exit()
+########################### Solve D-TRILEX equations ###########################
 
-# mixed-mesh
-#tk_mesh = MeshProduct(t_mesh, bz_mesh)
-#ttk_mesh = MeshProduct(t_mesh, t_mesh, bz_mesh)
-#tttk_mesh = MeshProduct(t_mesh, t_mesh, t_mesh, bz_mesh)
-
-#Uch = U1/2
-#Usp = -U1/2
-
-# TODO: move to tddt/dtrilex.py
-#eps_loc = np.mean(eps_tk.data, axis = 1)
-#for t, k in tk_mesh:
-#    eps_tk[t, k] = eps_tk[t, k] - eps_loc[t.index, :]
-#eps_s2p_K = Singular2PKeldyshGF.from_retime(eps_tk)
-
-# Dispersion reference system
-#TODO: compare to dt_pos/ dt_neg
-#def V(tx2, axis, sign, t):
-#    """ axis = x,y
-#        sign = -1,+1
-#        tx2  = tx,txx
-#    """
-#    V = tx2 * np.exp(sign * 1.j * A * np.cos(Omega * t))
-#    return V
-#for i in t_mesh:
-#    print(V(tx,'x', +1, i))
-
-# Non-local interaction
-#def Vq(k, channel):
-#    Vq = 0.0
-#    return Vq
-
-# Bare lattice interaction U(t, q)_{\varsigma,i,j,\varsigma',i',j'}
-##Uq = Gf(mesh=tk_mesh, target_shape=(2, 2))
-#U_qt = Gf(
-#    mesh=MeshProduct(t_mesh, bz_mesh),
-#    target_shape=(2, 1, 1, 2, 1, 1)  # 2 channels, 1 orbital
-#)
-#Uq_tilde = Gf(mesh=tk_mesh, target_shape=(2, 2))
+theory.prepare_dual_diagrams(eps_tk, Delta, U_tq, U_dc)
 
 # TODO
-#for t, k in tk_mesh:
-#    Uq[t, k][0,0] = Uch + Vq(k, 0) # charge
-#    Uq[t, k][1,1] = Usp + Vq(k, 1) # spin
-#    Uq_tilde[t, k][0,0] = Uq[t, k][0,0] - 0.5*Uch
-#    Uq_tilde[t, k][1,1] = Uq[t, k][1,1] - 0.5*Usp
-
-#Uq_s2p_K = Singular2PKeldyshGF.from_retime(Uq)
-#Uq_tilde_s2p_K = Singular2PKeldyshGF.from_retime(Uq_tilde)
-
-eps_gimp = eps_s2p_K @ gimp
-eps_gimp_eps = eps_gimp @ eps_s2p_K
-gimp_eps = gimp @ eps_s2p_K
-
-eps_gimp_delta = eps_gimp @ delta
-delta_gimp_eps = delta @ gimp_eps
-delta_gimp = delta @ gimp
-delta_gimp_delta = delta_gimp @ delta
-
-
-Q = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1, br2 in product(Branch, Branch):
-    for k in bz_mesh:
-        #print('k: ',k[0])
-        for time1, time2 in tt_mesh:
-            Q[br1,br2][time1,time2,k] = - delta[br1,br2][time1,time2] \
-                                        + eps_gimp_eps[br1,br2][time1,time2,k] \
-                                        - delta_gimp_eps[br1,br2][time1,time2,k]
-
-
-#  Test print
-Q_herm = 0.5 * (Q - herm_conj(Q))
-
-write_keldysh_gf_file("data/Q.txt", local_part(Q), target_indices=(0, 0))
-write_keldysh_gf_file("data/Qherm.txt", local_part(Q_herm), target_indices=(0, 0))
-
-Q = 0.5 * (Q + herm_conj(Q)) # for now to circumvent the hermicity check !!!!
-
-
-F = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1, br2 in product(Branch, Branch):
-    for k in bz_mesh:
-        for time1, time2 in tt_mesh:
-            F[br1,br2][time1,time2,k] = - eps_gimp[br1,br2][time1,time2,k] \
-                                        + delta_gimp[br1,br2][time1,time2]
-
-
-#print('F is Hermitian:', F.is_hermitian())
-
-#F = 0.5 * (F + herm_conj(F)) # for now to circumvent the check !!!!
-Gd0_reg = solve_vie2(F, Q)
-del F
-
-susc_imp_U = KeldyshGF(mesh=tt_mesh, arg_index_shapes=arg_index_shapes)
-for br1, br2 in product(Branch, Branch):
-    susc_imp_U[br1,br2].data[:,:,0,0] = susc_imp[br1,br2].data[:,:,0,0]*Uch
-    susc_imp_U[br1,br2].data[:,:,1,1] = susc_imp[br1,br2].data[:,:,1,1]*Usp
-
-
-# Impurity polarization
-
-pi_imp = solve_vie2(susc_imp_U, susc_imp)
-
-U_pi_imp = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,),(2,)))
-for br1, br2 in product(Branch, Branch):
-    U_pi_imp[br1,br2].data[:,:,0,0] = Uch*pi_imp[br1,br2].data[:,:,0,0]
-    U_pi_imp[br1,br2].data[:,:,1,1] = Usp*pi_imp[br1,br2].data[:,:,1,1]
-
-three_point_corr_U_pi_imp = conv(three_point_corr, U_pi_imp,
-              [(2, 0)])
-
-
-Lambda = three_point_corr - three_point_corr_U_pi_imp
-del three_point_corr, three_point_corr_U_pi_imp
-
-
-Uq_piimp = Uq_s2p_K @ pi_imp
-Uq_piimp_Uq = Uq_piimp @ Uq_s2p_K
-
-#Uq_piimp = 0.5 * (Uq_piimp + herm_conj(Uq_piimp)) # for now to circumvent the hermicity check !!!!
-Uq_piimp_Uq = 0.5 * (Uq_piimp_Uq + herm_conj(Uq_piimp_Uq))
-W0prime = solve_vie2(-Uq_piimp, Uq_piimp_Uq)
+exit()
 
 ########################### DIAGRAMS #####################################
 
@@ -456,9 +360,6 @@ del LambdaW0prime_q0, LambdaUq0_tilde, LambdaGd0_reg_loc #, Lambdaeps_s2p_loc
 ############# Tadpole END #####################
 
 ############# Full Self-Energy #####################
-
-print(sigma_dual_K.mesh)
-print(sigma_tadpole.mesh)
 
 sigma_dual_full = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 for br1, br2 in product(Branch, Branch):
