@@ -36,20 +36,12 @@ from triqs.gf import (MeshBrZone,
 from .keldysh import Branch, KeldyshGF, Singular2PKeldyshGF
 
 
-class SpacialArgs(Enum):
-    "Kind of spacial arguments of a Green's function."
-    LATTICE = 0
-    """
-    Real space (lattice) arguments
-    """
-    BRZONE = 1
-    """
-    Reciprocal space (Brillouin zone) arguments
-    """
-    BOTH = 2
-    """
-    Both real and reciprocal space arguments
-    """
+def find_gamma_point(mesh: MeshBrZone):
+    r"Given a k-mesh, return the mesh point corresponding to k=0."
+    for k in mesh:
+        if np.equal(k.value, (0, 0, 0)).all():
+            return k
+    raise RuntimeError(r"Cannot find the \Gamma-point on the given k-mesh")
 
 
 def local_part(g: Union[KeldyshGF, Singular2PKeldyshGF]) -> \
@@ -73,6 +65,22 @@ def local_part(g: Union[KeldyshGF, Singular2PKeldyshGF]) -> \
         res_comp.data[:] = np.average(g_comp.data, axis=avg_axes)
 
     return res
+
+
+class SpacialArgs(Enum):
+    "Kind of spacial arguments of a Green's function."
+    LATTICE = 0
+    """
+    Real space (lattice) arguments
+    """
+    BRZONE = 1
+    """
+    Reciprocal space (Brillouin zone) arguments
+    """
+    BOTH = 2
+    """
+    Both real and reciprocal space arguments
+    """
 
 
 def _fourier_impl(g_in: Gf, g_out: Gf, mesh_comp_pos: list[int],

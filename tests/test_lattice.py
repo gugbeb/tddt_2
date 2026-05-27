@@ -26,7 +26,10 @@ from triqs.gf import MeshReTime, MeshReFreq, MeshCycLat, MeshBrZone, MeshProduct
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from tddt.keldysh import Branch, KeldyshGF, Singular2PKeldyshGF
-from tddt.lattice import local_part, SpacialArgs, lattice_fourier
+from tddt.lattice import (find_gamma_point,
+                          local_part,
+                          SpacialArgs,
+                          lattice_fourier)
 from tddt.testing import (assert_keldysh_gf_almost_equal,
                           assert_singular_2p_keldysh_gf_almost_equal)
 
@@ -36,6 +39,12 @@ FW, BW = Branch.FORWARD, Branch.BACKWARD
 
 class TestLattice(unittest.TestCase):
     """Functions and types related to lattice and Brillouin zone"""
+
+    def test_find_gamma_point(self):
+        bl = BravaisLattice(units=[(1, 0, 0), (0, 1, 0)])  # Square lattice
+        k_mesh = MeshBrZone(BrillouinZone(bl), 11)
+        k0 = find_gamma_point(k_mesh)
+        np.testing.assert_array_equal(k0.value, (0, 0, 0))
 
     def test_local_part(self):
         t_mesh = MeshReTime(0.0, 10.0, 11)
