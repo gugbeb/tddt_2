@@ -83,7 +83,7 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g)
+        pi = polarization_2nd_order(Lambda, g, g)
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1], self.t_mesh[1]))
         for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
@@ -105,7 +105,7 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g)
+        pi = polarization_2nd_order(Lambda, g, g)
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
                                             self.t_mesh[1]),
@@ -133,7 +133,7 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g)
+        pi = polarization_2nd_order(Lambda, g, g)
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
                                             self.t_mesh[1],
@@ -160,7 +160,7 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g)
+        pi = polarization_2nd_order(Lambda, g, g)
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
                                             self.t_mesh[1],

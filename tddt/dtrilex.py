@@ -335,20 +335,26 @@ class DualTRILEX:
         self.W0prime = solve_vie2(-U_tq_pi_imp, U_tq_pi_imp_U_tq)
 
 
-def polarization_2nd_order(Lambda: KeldyshGF, g: KeldyshGF):
+def polarization_2nd_order(Lambda: KeldyshGF, g1: KeldyshGF, g2: KeldyshGF):
     r"""
     2nd order contribution to the polarization function.
 
     Lambda: 3-point vertex.
-    g: Fermionic line.
+    g1: 1st fermionic line.
+    g2: 2nd fermionic line.
     """
     assert Lambda.n_args == 3, "Lambda must be a 3-point vertex"
-    assert g.n_args == 2, "g must be a 2-point GF"
+    assert g1.n_args == 2, "g1 must be a 2-point GF"
+    assert g2.n_args == 2, "g2 must be a 2-point GF"
 
-    # f(z_0, z_1, z_2) = \int_C d\bar z \Lambda(z_0, \bar z, z_2) g(\bar z, z_1)
-    f = conv(Lambda, g, [(1, 0)], free_args=([0, 2], [1]))
-    # \Pi(z_1, z_2) = -i \int_C dz' dz'' f(z', z'', z_1) f(z'', z', z_2)
-    return -1j * conv(f, f, [(0, 1), (1, 0)])
+    # f1(z_0, z_1, z_2) =
+    #     \int_C d\bar z \Lambda(z_0, \bar z, z_2) g1(\bar z, z_1)
+    f1 = conv(Lambda, g1, [(1, 0)], free_args=([0, 2], [1]))
+    # f2(z_0, z_1, z_2) =
+    #     \int_C d\bar z g2(\bar z, z_1) \Lambda(z_0, \bar z, z_2)
+    f2 = conv(g2, Lambda, [(0, 1)], free_args=([1], [0, 2]))
+    # \Pi(z_1, z_2) = -i \int_C dz' dz'' f1(z', z'', z_1) f2(z'', z', z_2)
+    return -1j * conv(f1, f2, [(0, 1), (1, 0)])
 
 
 def selfenergy_2nd_order(Lambda: KeldyshGF, g: KeldyshGF, w: KeldyshGF):
