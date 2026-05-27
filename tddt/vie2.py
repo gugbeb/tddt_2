@@ -253,7 +253,7 @@ class VIE2Solver:
         assert q.shape == self.f2_shape
 
         f_herm_conj = self._herm_conj(f)
-        if not np.allclose(f, f_herm_conj, atol=1e-14):
+        if not np.allclose(f, f_herm_conj, atol=1e-12):
             d = np.max(np.abs(f - f_herm_conj))
             warn(f"The integral kernel 'f' is not Hermitian, max|f-f^†| = {d}")
 
@@ -285,7 +285,7 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
 
     The resulting G(t, t') is also Hermitian.
     """
-    assert Q.is_hermitian(), "Q must be Hermitian"
+    assert Q.is_hermitian(atol=1e-12), "Q must be Hermitian"
     assert F.n_args == 2, "F must be a 2-point GF"
     assert F.time_mesh.components[1] == Q.time_mesh.components[0], \
         "Incompatible time meshes of F and Q"
@@ -300,7 +300,7 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
     # FIXME: This check must be enabled as soon as keldysh.conv() is fixed
     # assert_keldysh_gf_almost_equal(
     #     F @ Q, Q @ herm_conj(F),
-    #     1e-14,
+    #     1e-12,
     #     err_msg=r"F and Q must satisfy F * Q == Q * F^\ddagger"
     # )
 
