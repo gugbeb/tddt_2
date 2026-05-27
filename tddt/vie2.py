@@ -27,8 +27,9 @@ import numpy as np
 from triqs.gf import Gf, MeshReTime
 
 from .retime import conj, conv_lg_adv
-from .keldysh import KeldyshGF
+from .keldysh import KeldyshGF, herm_conj
 from .integration import GregoryIntegrator
+from .testing import assert_keldysh_gf_almost_equal
 
 
 class VIE2Solver:
@@ -285,7 +286,10 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
 
     The resulting G(t, t') is also Hermitian.
     """
-    assert Q.is_hermitian(atol=1e-12), "Q must be Hermitian"
+    if not Q.is_hermitian(atol=1e-12):
+        dQ = Q - herm_conj(Q)
+        d = np.max([np.max(np.abs(comp.data)) for comp in dQ.components.flat])
+        warn(f"Q is not Hermitian, max|Q-Q^‡| = {d}")
     assert F.n_args == 2, "F must be a 2-point GF"
     assert F.time_mesh.components[1] == Q.time_mesh.components[0], \
         "Incompatible time meshes of F and Q"
@@ -297,12 +301,13 @@ def solve_vie2(F: KeldyshGF, Q: KeldyshGF) -> KeldyshGF:
         "Time mesh of F must be square"
     assert F.arg_index_shapes[0] == F.arg_index_shapes[1], \
         "The two target subshapes of F must be equal"
-    # FIXME: This check must be enabled as soon as keldysh.conv() is fixed
-    # assert_keldysh_gf_almost_equal(
-    #     F @ Q, Q @ herm_conj(F),
-    #     1e-12,
-    #     err_msg=r"F and Q must satisfy F * Q == Q * F^\ddagger"
-    # )
+    FQ, QFdag = F @ Q, Q @ herm_conj(F)
+    try:
+        assert_keldysh_gf_almost_equal(FQ, QFdag, 1e-12)
+    except AssertionError:
+        dQF = FQ - QFdag
+        d = np.max([np.max(np.abs(comp.data)) for comp in dQF.components.flat])
+        warn(f"F and Q do not satisfy F*Q == Q*F^‡, max|F*Q - Q*F^‡| = {d}")
 
     solver = VIE2Solver(Q.time_mesh.components[0],
                         Q.arg_index_shapes[0],

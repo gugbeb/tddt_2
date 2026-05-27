@@ -297,7 +297,7 @@ class DualTRILEX:
                     - eps_gimp_Delta[br][t1, t2, k] \
                     + Delta_gimp_Delta[br][t1, t2]
 
-        # FIXME: To circumvent the hermiticity check
+        # FIXME: To silence the hermiticity check
         Gd0_Q = 0.5 * (Gd0_Q + herm_conj(Gd0_Q))
 
         Gd0_F = KeldyshGF(mesh=ttk_mesh,
@@ -329,7 +329,7 @@ class DualTRILEX:
         U_tq_pi_imp = self.U_tq @ self.pi_imp
         U_tq_pi_imp_U_tq = U_tq_pi_imp @ self.U_tq
 
-        # FIXME: To circumvent the hermiticity check
+        # FIXME: To silence the hermiticity check
         U_tq_pi_imp_U_tq = 0.5 * (U_tq_pi_imp_U_tq
                                   + herm_conj(U_tq_pi_imp_U_tq))
         self.W0prime = solve_vie2(-U_tq_pi_imp, U_tq_pi_imp_U_tq)
