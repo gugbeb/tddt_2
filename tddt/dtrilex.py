@@ -216,7 +216,7 @@ class DualTRILEX:
             arg_index_shapes=((2, Nimp), (2, Nimp), (2, Nimp, Nimp))
         )
 
-    def prepare_dual_diagrams(
+    def compute_bare_lines_vertex(
         self, eps_tk: Gf, Delta: KeldyshGF, U_tq: Gf, U_dc: np.array
     ):
         r"""
@@ -320,8 +320,6 @@ class DualTRILEX:
         self.pi_imp = solve_vie2(chi_imp_U, self.chi_imp)
 
         # Compute impurity vertex
-        # FIXME: self.corr_3t_imp is already the connected part of
-        # the correlator. Is this correct?
         U_pi_imp = target_dot(self.pi_imp, U_dc_ch_mat, 0, (3, 4, 5))
         self.Lambda = self.corr_3t_imp \
             - conv(self.corr_3t_imp, U_pi_imp, [(2, 0)])

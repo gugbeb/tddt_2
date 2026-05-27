@@ -157,7 +157,7 @@ Delta = model_ref.hybridization(theory.t_mesh, [0], [1, 2, 3], T=T)
 
 ########################### Solve D-TRILEX equations ###########################
 
-theory.prepare_dual_diagrams(eps_tk, Delta, U_tq, U_dc)
+theory.compute_bare_lines_vertex(eps_tk, Delta, U_tq, U_dc)
 
 # TODO
 exit()
