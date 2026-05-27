@@ -27,11 +27,7 @@ from triqs.lattice import BravaisLattice, BrillouinZone
 
 from realevol.tinterp import TInterp as ti
 
-from tddt.keldysh import (Branch,
-                          KeldyshGF,
-                          Singular2PKeldyshGF,
-                          conv,
-                          herm_conj)
+from tddt.keldysh import Branch, KeldyshGF, herm_conj
 from tddt.dtrilex import DualTRILEX, Channel
 
 from tddt.lattice import local_part
@@ -146,6 +142,7 @@ model_ref.local_int[0] = U1
 model_ref.hopping[0, 0] = -mu1
 
 # Compute correlation functions of the reference system
+print("Computing correlators of the reference system...")
 theory.compute_ref_correlators(verbosity=2,
                                hamiltonian_interpol='Trapezoid',
                                lanczos_min_matrix_size=40)
@@ -153,226 +150,19 @@ theory.compute_ref_correlators(verbosity=2,
 ###################### Construct a hybridization function ######################
 
 # Hybridization of impurity site 0 with bath sites 1, 2, 3
+print("Computing the hybridization function...")
 Delta = model_ref.hybridization(theory.t_mesh, [0], [1, 2, 3], T=T)
 
 ########################### Solve D-TRILEX equations ###########################
 
+print("Computing bare dual lines and the vertex...")
 theory.compute_bare_lines_vertex(eps_tk, Delta, U_tq, U_dc)
+
+print("Computing dual diagrams...")
+theory.compute_diagrams()
 
 # TODO
 exit()
-
-########################### DIAGRAMS #####################################
-
-########################### prepare diagrams #####################################
-
-#self-energy
-
-eps_s2p_R = Singular2PKeldyshGF(mesh=tk_mesh, arg_index_shapes=((2,), (2,)))
-eps_s2p_mR = Singular2PKeldyshGF(mesh=tk_mesh, arg_index_shapes=((2,), (2,)))
-eps_s2p_loc = Singular2PKeldyshGF(mesh=t_mesh, arg_index_shapes=((2,), (2,)))
-
-
-for time in t_mesh:
-    for sigm in range(2):
-        for br in Branch:
-            eps_s2p_loc[br][time][sigm,sigm] = np.mean(eps_s2p_K[br1][time,:][sigm,sigm].data)
-            eps_K = eps_s2p_K[br][time,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-
-            eps_s2p_R[br].data[time.linear_index,:,sigm,sigm] = np.fft.ifftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k -> R
-            eps_s2p_mR[br].data[time.linear_index,:,sigm,sigm] = np.fft.fftn(eps_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k+q -> mR
-
-print(eps_s2p_R[Branch.FORWARD].data[0,:,0,0].reshape(nkx,nky,nkz))
-
-k_points = list(bz_mesh)
-q0 = k_points[0]
-
-
-Uq_tilde_s2p_R = Singular2PKeldyshGF(mesh=tk_mesh, arg_index_shapes=((2,), (2,)))
-Uq0_tilde = Singular2PKeldyshGF(mesh=t_mesh, arg_index_shapes=((2,), (2,)))
-for time in t_mesh:
-    for ch in range(2):
-        for br in Branch:
-            Uq_tilde_K = Uq_tilde_s2p_K[br][time,:][ch,ch].data.reshape(nkx,nky,nkz)
-            Uq0_tilde[br][time][ch,ch] = Uq_tilde_s2p_K[br][time,q0][ch,ch]
-
-            Uq_tilde_s2p_R[br].data[time.linear_index,:,ch,ch] = np.fft.ifftn(Uq_tilde_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
-
-
-Gd0_reg_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-Gd0_reg_mR = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-Gd0_reg_loc = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
-for time1, time2 in tt_mesh:
-    for br1, br2 in product(Branch, Branch):
-        for sigm in range(2): # spin up and dn
-            Gd0_reg_loc[br1,br2][time1,time2][sigm,sigm] = np.mean(Gd0_reg[br1,br2][time1,time2,:][sigm,sigm].data)
-            Gd0_reg_K = Gd0_reg[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-            Gd0_reg_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_reg_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
-            Gd0_reg_mR[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.fftn(Gd0_reg_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> -R
-
-
-# TODO this won't work if k-mesh does not start from Gamma point
-# TODO check what to use for W and Uq np.fft.ifftn or np.fft.fftn (check also for Gd and eps) !!!!!!
-
-########################### diagrams  prepare  END  #####################################
-
-########################### Polarization #####################
-
-Lambdaeps_s2p_R = conv(Lambda, eps_s2p_R,
-             [(1, 0)])
-
-eps_s2p_mRLambda = conv(eps_s2p_mR, Lambda,
-             [(0, 1)])
-
-
-LambdaGd0_reg_R = conv(Lambda, Gd0_reg_R,
-             [(1, 0)])
-Gd0_reg_mRLambda = conv(Gd0_reg_mR, Lambda,
-             [(0, 1)])
-
-
-
-Pi_R_1 = conv(LambdaGd0_reg_R, Gd0_reg_mRLambda,
-             [(0, 0), (2, 1)])
-
-Pi_R_2 = conv(Lambdaeps_s2p_R, Gd0_reg_mRLambda,
-             [(0, 0),(2, 1)])
-
-Pi_R_3 = conv(LambdaGd0_reg_R, eps_s2p_mRLambda,
-             [(0, 0), (2, 1)])
-
-Pi_R_4 = conv(Lambdaeps_s2p_R, eps_s2p_mRLambda,
-             [(0, 0), (2, 1)])
-
-
-
-Pi_R = -1j*(Pi_R_1 + Pi_R_2 + Pi_R_3 + Pi_R_4)
-
-del LambdaGd0_reg_R, Lambdaeps_s2p_R, Gd0_reg_mRLambda, eps_s2p_mRLambda
-del Pi_R_1, Pi_R_2, Pi_R_3, Pi_R_4
-
-Pi_K = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for time1, time2 in tt_mesh:
-    for br1, br2 in product(Branch, Branch):
-        for sigm in range(2): # spin up and dn
-            Pi = Pi_R[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-            Pi_K[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Pi, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
-
-########################### Polarization END #####################
-
-########################### Full W #####################
-W0prime_Pi_K = W0prime @ Pi_K
-Uq_tilde_s2p_K_Pi_K = Uq_tilde_s2p_K @ Pi_K
-
-mFW = Uq_tilde_s2p_K_Pi_K
-mQW = mFW @ Uq_tilde_s2p_K
-QW = W0prime - mQW
-
-QW = -0.5 * (QW + herm_conj(QW)) # for now to circumvent the hermicity check !!!!
-mFW = 0.5 * (mFW + herm_conj(mFW)) # for now to circumvent the hermicity check !!!!
-
-Wprime = solve_vie2(-mFW, QW)
-
-del mFW, mQW, QW, W0prime_Pi_K, Uq_tilde_s2p_K_Pi_K
-
-
-Wprime_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-W0prime_q0 = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
-for time1, time2 in tt_mesh:
-    for br1, br2 in product(Branch, Branch):
-        for ch in range(2): # channel charge and spin
-            W0prime_q0[br1,br2][time1,time2][ch,ch] = W0prime[br1,br2][time1,time2,q0][ch,ch]
-            Wprime_K = Wprime[br1,br2][time1,time2,:][ch,ch].data.reshape(nkx,nky,nkz)
-            Wprime_R[br1,br2].data[time1.linear_index,time2.linear_index,:,ch,ch] = np.fft.ifftn(Wprime_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # k+q -> R
-
-########################### Full W END #####################
-########################### Self-Energy #####################################
-
-LambdaGd0_reg_mR = conv(Lambda, Gd0_reg_mR,
-             [(1, 0)])
-
-Wprime_RLambda = conv(Wprime_R, Lambda,
-             [(1, 2)])
-
-Lambdaeps_s2p_mR = conv(Lambda, eps_s2p_mR,
-             [(1, 0)])
-Uq_tilde_s2p_RLambda = conv(Uq_tilde_s2p_R, Lambda,
-             [(1, 2)])
-
-sigma_R_1 = conv(LambdaGd0_reg_mR, Wprime_RLambda,
-             [(1, 0), (2, 1)])
-
-sigma_R_2 = conv(Lambdaeps_s2p_mR, Wprime_RLambda,
-               [(1, 0), (2, 1)])
-
-sigma_R_3 = conv(LambdaGd0_reg_mR, Uq_tilde_s2p_RLambda,
-               [(1, 0), (2, 1)])
-
-sigma_R_4 = conv(Lambdaeps_s2p_mR, Uq_tilde_s2p_RLambda,
-               [(1, 0), (2, 1)])
-
-sigma_R = 1j * (sigma_R_1 + sigma_R_2 + sigma_R_3 + sigma_R_4)
-
-del LambdaGd0_reg_mR, Wprime_RLambda, Lambdaeps_s2p_mR, Uq_tilde_s2p_RLambda
-del sigma_R_1, sigma_R_2, sigma_R_3,sigma_R_4
-
-sigma_dual_K = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for time1, time2 in tt_mesh:
-    for br1, br2 in product(Branch, Branch):
-        for sigm in range(2): # spin up and dn
-            sigma = sigma_R[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-            sigma_dual_K[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(sigma, axes=(0,1,2)).reshape(nkx*nky*nkz) # R -> K
-
-del sigma_R
-
-############# Tadpole #####################
-
-#Lambdaeps_s2p_loc = conv(Lambda, eps_s2p_loc,
-#             [(0, 1),(1, 0)])
-
-LambdaUq0_tilde = conv(Lambda, Uq0_tilde,
-             [(2, 0)])
-
-LambdaW0prime_q0 = conv(Lambda, W0prime_q0,
-             [(2, 0)])
-
-LambdaGd0_reg_loc = conv(Lambda, Gd0_reg_loc,
-             [(0, 1),(1, 0)])
-
-
-sigma_tadpole_1 = conv(LambdaW0prime_q0, LambdaGd0_reg_loc,
-             [(2, 0)])
-
-#sigma_tadpole_2 = conv(LambdaWprime_q0, Lambdaeps_s2p_loc,
-#             [(2, 0)])
-
-sigma_tadpole_3 = conv(LambdaUq0_tilde, LambdaGd0_reg_loc,
-             [(2, 0)])
-
-#sigma_tadpole_4 = conv(LambdaUq0_tilde, Lambdaeps_s2p_loc,
-#             [(2, 0)])
-
-sigma_tadpole = -1j*(sigma_tadpole_1 + sigma_tadpole_3)
-#sigma_tadpole = -1j*(sigma_tadpole_1 + sigma_tadpole_2 + sigma_tadpole_3 + sigma_tadpole_4)
-
-del LambdaW0prime_q0, LambdaUq0_tilde, LambdaGd0_reg_loc #, Lambdaeps_s2p_loc
-
-############# Tadpole END #####################
-
-############# Full Self-Energy #####################
-
-sigma_dual_full = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1, br2 in product(Branch, Branch):
-    for sigm in range(2): # spin up and dn
-        for time1, time2 in tt_mesh:
-            for k in bz_mesh:
-                sigma_dual_full[br1,br2][time1,time2,k][sigm,sigm] = sigma_dual_K[br1,br2][time1,time2,k][sigm,sigm] \
-                                                                        + 0.0 * sigma_tadpole[br1,br2][time1,time2][sigm,sigm] #!!!!! tadpole is set to zero !!!!!
-
-del sigma_dual_K, sigma_tadpole
-############# Full Self-Energy END #####################
-
-########################### Self-Energy END #####################################
 
 K = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
 for br1, br2 in product(Branch, Branch):

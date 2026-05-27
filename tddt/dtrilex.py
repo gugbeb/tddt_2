@@ -37,7 +37,7 @@ from .keldysh import (Branch,
                       conv,
                       target_dot)
 from .models import FiniteCluster
-from .lattice import local_part
+from .lattice import find_gamma_point, local_part, lattice_fourier, SpacialArgs
 from .realevol import (
     compute_keldysh_gf,
     compute_keldysh_conn_correlator_2t,
@@ -288,49 +288,125 @@ class DualTRILEX:
         ttk_mesh = MeshProduct(self.t_mesh, self.t_mesh, self.k_mesh)
 
         # Compute bare lines (fermions)
-        Gd0_Q = KeldyshGF(mesh=ttk_mesh,
-                          arg_index_shapes=Delta.arg_index_shapes)
+        Gd0_reg_Q = KeldyshGF(
+            mesh=ttk_mesh, arg_index_shapes=Delta.arg_index_shapes
+        )
         for br in product(Branch, repeat=2):
-            for t1, t2, k in Gd0_Q.mesh:
-                Gd0_Q[br][t1, t2, k] = eps_gimp_eps[br][t1, t2, k] \
+            for t1, t2, k in Gd0_reg_Q.mesh:
+                Gd0_reg_Q[br][t1, t2, k] = \
+                    eps_gimp_eps[br][t1, t2, k] \
                     - Delta_gimp_eps[br][t1, t2, k] \
                     - eps_gimp_Delta[br][t1, t2, k] \
                     + Delta_gimp_Delta[br][t1, t2]
 
-        # FIXME: To silence the hermiticity check
-        Gd0_Q = 0.5 * (Gd0_Q + herm_conj(Gd0_Q))
+        # FIXME: To silence the hermiticity check,
+        # need a better solution to this issue.
+        Gd0_reg_Q = 0.5 * (Gd0_reg_Q + herm_conj(Gd0_reg_Q))
 
-        Gd0_F = KeldyshGF(mesh=ttk_mesh,
-                          arg_index_shapes=eps_gimp.arg_index_shapes)
+        Gd0_reg_F = KeldyshGF(
+            mesh=ttk_mesh, arg_index_shapes=eps_gimp.arg_index_shapes
+        )
         for br in product(Branch, repeat=2):
-            for t1, t2, k in Gd0_F.mesh:
-                Gd0_F[br][t1, t2, k] = - eps_gimp[br][t1, t2, k] \
+            for t1, t2, k in Gd0_reg_F.mesh:
+                Gd0_reg_F[br][t1, t2, k] = - eps_gimp[br][t1, t2, k] \
                     + Delta_gimp[br][t1, t2]
 
-        self.Gd0_reg = solve_vie2(Gd0_F, Gd0_Q)
+        # NB: This Dyson equation is solved w.r.t. Gd0_reg_tk + \Delta
+        # This way the RHS of the equation is Hermitian.
+        self.Gd0_reg_tk = solve_vie2(Gd0_reg_F, Gd0_reg_Q)
         for br in product(Branch, repeat=2):
-            for t1, t2, k in self.Gd0_reg.mesh:
-                self.Gd0_reg[br][t1, t2, k] -= Delta[br][t1, t2]
+            for t1, t2, k in self.Gd0_reg_tk.mesh:
+                self.Gd0_reg_tk[br][t1, t2, k] -= Delta[br][t1, t2]
 
         # Compute impurity polarization operator
         # U_dc as a diagonal matrix w.r.t. the channel indices
         U_dc_ch_mat = np.einsum("cijkl,cd->cijdkl", U_dc, np.eye(2))
 
         chi_imp_U = target_dot(self.chi_imp, U_dc_ch_mat, 1, (0, 1, 2))
-        self.pi_imp = solve_vie2(chi_imp_U, self.chi_imp)
+        self.pi_imp_t = solve_vie2(chi_imp_U, self.chi_imp)
 
         # Compute impurity vertex
-        U_pi_imp = target_dot(self.pi_imp, U_dc_ch_mat, 0, (3, 4, 5))
+        U_pi_imp = target_dot(self.pi_imp_t, U_dc_ch_mat, 0, (3, 4, 5))
         self.Lambda = self.corr_3t_imp \
             - conv(self.corr_3t_imp, U_pi_imp, [(2, 0)])
 
-        U_tq_pi_imp = self.U_tq @ self.pi_imp
+        U_tq_pi_imp = self.U_tq @ self.pi_imp_t
         U_tq_pi_imp_U_tq = U_tq_pi_imp @ self.U_tq
 
-        # FIXME: To silence the hermiticity check
-        U_tq_pi_imp_U_tq = 0.5 * (U_tq_pi_imp_U_tq
-                                  + herm_conj(U_tq_pi_imp_U_tq))
-        self.W0prime = solve_vie2(-U_tq_pi_imp, U_tq_pi_imp_U_tq)
+        # FIXME: To silence the hermiticity check,
+        # need a better solution to this issue.
+        U_tq_pi_imp_U_tq = 0.5 * (
+            U_tq_pi_imp_U_tq + herm_conj(U_tq_pi_imp_U_tq)
+        )
+        self.W0_reg_tq = solve_vie2(-U_tq_pi_imp, U_tq_pi_imp_U_tq)
+
+    def compute_diagrams(self):
+        r"""
+        Compute diagrams for dual self-energy and polarization operator.
+        """
+
+        # Dual lines as functions of coordinates r and -r
+        eps_tr = lattice_fourier(self.eps_tk, apply_to=SpacialArgs.BRZONE)
+        eps_tmr = lattice_fourier(self.eps_tk, apply_to=SpacialArgs.BRZONE,
+                                  flip_arg_sign=True)
+
+        Gd0_reg_tr = lattice_fourier(self.Gd0_reg_tk,
+                                     apply_to=SpacialArgs.BRZONE)
+        Gd0_reg_tmr = lattice_fourier(self.Gd0_reg_tk,
+                                      apply_to=SpacialArgs.BRZONE,
+                                      flip_arg_sign=True)
+
+        tilde_U_tr = lattice_fourier(self.tilde_U_tq,
+                                     apply_to=SpacialArgs.BRZONE)
+
+        # Local parts for tadpole (Hartree-Fock) diagram
+        eps_loc_t = local_part(self.eps_tk)
+        Gd0_reg_loc_t = local_part(self.Gd0_reg_tk)
+
+        # \tilde U(t, q=0) and W0_reg(t, q=0) for tadpole diagram
+        q0 = find_gamma_point(self.tilde_U_tq.mesh.components[1])
+        tilde_U_tq0 = Singular2PKeldyshGF(
+            mesh=self.t_mesh, arg_index_shapes=self.tilde_U_tq.arg_index_shapes
+        )
+        W0_reg_tq0 = KeldyshGF(
+            mesh=self.tt_mesh, arg_index_shapes=self.W0_reg_tq.arg_index_shapes
+        )
+        for br in Branch:
+            for t in tilde_U_tq0.mesh:
+                tilde_U_tq0[br][t] = self.tilde_U_tq[br][t, q0]
+        for br in product(Branch, repeat=2):
+            for t1, t2 in W0_reg_tq0.mesh:
+                W0_reg_tq0[br][t1, t2] = self.W0_reg_tq[br][t1, t2, q0]
+
+        # Dual polarization
+        pi_tr = polarization_2nd_order(
+            self.Lambda, [Gd0_reg_tr, eps_tr], [Gd0_reg_tmr, eps_tmr]
+        )
+        self.pi_tq = lattice_fourier(pi_tr, apply_to=SpacialArgs.LATTICE)
+
+        # Dressed dual interaction
+        W_reg_F = -(self.W0_reg_tq @ self.pi_tq + self.tilde_U_tq @ self.pi_tq)
+        W_reg_Q = -(W_reg_F @ self.W0_reg_tq + W_reg_F @ self.tilde_U_tq)
+        # NB: This Dyson equation is solved w.r.t. W_reg_tq - W0_reg_tq.
+        # This way the RHS of the equation is Hermitian.
+        self.W_reg_tq = solve_vie2(W_reg_F, W_reg_Q) + self.W0_reg_tq
+        W_reg_tr = lattice_fourier(self.W_reg_tq, apply_to=SpacialArgs.BRZONE)
+
+        # Dual self-energy
+        Sigma_tr = selfenergy_2nd_order(
+            self.Lambda, [Gd0_reg_tmr, eps_tmr], [W_reg_tr, tilde_U_tr]
+        )
+        self.Sigma_tk = lattice_fourier(Sigma_tr, apply_to=SpacialArgs.LATTICE)
+
+        # Dual self-energy - tadpole diagram contribution
+        Sigma_hf_t = selfenergy_2nd_order_hf(
+            self.Lambda, [Gd0_reg_loc_t, eps_loc_t], [W0_reg_tq0, tilde_U_tq0]
+        )
+
+        # Complete dual self-energy
+        for br in product(Branch, repeat=2):
+            for t1, t2, k in self.Sigma_tk.mesh:
+                self.Sigma_tk[br][t1, t2, k] += Sigma_hf_t[br][t1, t2]
 
 
 def polarization_2nd_order(Lambda: KeldyshGF,
