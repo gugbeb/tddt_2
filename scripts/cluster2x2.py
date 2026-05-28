@@ -18,21 +18,19 @@
 #
 # ##############################################################################
 
-from itertools import product
 import numpy as np
 
 import triqs.utility.mpi  # noqa: F401
-from triqs.gf import MeshReTime, MeshBrZone, MeshProduct, Gf
+from triqs.gf import MeshReTime, MeshBrZone, MeshCycLat, MeshProduct, Gf
 from triqs.lattice import BravaisLattice, BrillouinZone
 
 from realevol.tinterp import TInterp as ti
 
-from tddt.keldysh import Branch, KeldyshGF, herm_conj
+from tddt.keldysh import Branch
 from tddt.dtrilex import DualTRILEX, Channel
 
-from tddt.lattice import local_part
+from tddt.lattice import local_part, lattice_fourier, SpacialArgs
 from tddt.models import FiniteCluster
-from tddt.vie2 import solve_vie2
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
@@ -161,73 +159,24 @@ theory.compute_bare_lines_vertex(eps_tk, Delta, U_tq, U_dc)
 print("Computing dual diagrams...")
 theory.compute_diagrams()
 
-# TODO
-exit()
+print("Computing lattice Green's functions...")
+g_tk = theory.compute_lattice_gf()
+g_tr = lattice_fourier(g_tk, apply_to=SpacialArgs.BRZONE)
 
-K = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1, br2 in product(Branch, Branch):
-    for k in bz_mesh:
-        for time1, time2 in tt_mesh:
-            K[br1,br2][time1,time2,k] =  sigma_dual_full[br1,br2][time1,time2,k][:,:] \
-                                                    + gref[br1,br2][time1,time2][:,0,:,0]
+g_cpt_tk = theory.compute_lattice_gf_cpt()
+g_cpt_tr = lattice_fourier(g_cpt_tk, apply_to=SpacialArgs.BRZONE)
 
-L = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for br1, br2 in product(Branch, Branch):
-    for k in bz_mesh:
-        for time1, time2 in tt_mesh:
-            L[br1,br2][time1,time2,k] = gref[br1,br2][time1,time2][:,0,:,0]
+############################# g_imp @ Gd0 @ g_imp ##############################
 
+gd0_full_tk = theory.g_imp @ theory.Gd0_reg_tk + theory.g_imp @ theory.eps_tk
+gd0_full_tk = gd0_full_tk @ theory.g_imp
 
-K_test = KeldyshGF(mesh=tt_mesh, arg_index_shapes=((2,), (2,)))
-for br1, br2 in product(Branch, Branch):
-    for k in bz_mesh:
-        for time1, time2 in tt_mesh:
-            K_test[br1,br2][time1,time2] = gref[br1,br2][time1,time2][:,0,:,0]
+gd0_full_tr = lattice_fourier(gd0_full_tk, apply_to=SpacialArgs.BRZONE)
+
+######################### Write results to text files ##########################
 
 
-Keps = K @ eps_s2p_K
-Leps = L @ eps_s2p_K
-
-Kdelta = K @ delta
-Ldelta = L @ delta
-
-FG = Kdelta - Keps
-FG = 0.5 * (FG + herm_conj(FG)) # for now to circumvent the hermicity check !!!!
-LG = Ldelta - Leps
-LG = 0.5 * (LG + herm_conj(LG)) # for now to circumvent the hermicity check !!!!
-
-K = 0.5 * (K + herm_conj(K)) # for now to circumvent the hermicity check !!!!
-G_latt = solve_vie2(FG, K)
-G_latt_CPT = solve_vie2(LG, L) # check because sigma_dual is in F!!!!!
-
-del Keps, Kdelta, FG, L #, K
-
-
-Gd0_K_full = K_test @ Gd0_reg + K_test @ eps_s2p_K
-Gd0_K_full = Gd0_K_full @ K_test
-
-
-G_latt_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-G_latt_CPT_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-G_latt_mR = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-Gd0_full_R = KeldyshGF(mesh=ttk_mesh, arg_index_shapes=((2,), (2,)))
-for time1, time2 in tt_mesh:
-    for br1, br2 in product(Branch, Branch):
-        for sigm in range(2): # spin up and dn
-            GR = G_latt[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-            GR_CPT  = G_latt_CPT[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-
-            G_latt_CPT_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(GR_CPT, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
-
-            G_latt_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(GR, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
-            G_latt_mR[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.fftn(GR, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> -R
-
-            Gd0_full_K = Gd0_K_full[br1,br2][time1,time2,:][sigm,sigm].data.reshape(nkx,nky,nkz)
-            Gd0_full_R[br1,br2].data[time1.linear_index,time2.linear_index,:,sigm,sigm] = np.fft.ifftn(Gd0_full_K, axes=(0,1,2)).reshape(nkx*nky*nkz) # K -> R
-
-######################## Write results into text files #########################
-
-def write_keldysh_gf_file(filename, g, k_point=None, target_indices=()):
+def write_keldysh_gf_file(filename, g, spc_point=None, target_indices=()):
     """
     Write (FW, FW) and (FW, BW) components of a 2-point KeldyshGF
     object to a text file.
@@ -238,38 +187,40 @@ def write_keldysh_gf_file(filename, g, k_point=None, target_indices=()):
     with open(filename, 'w') as file:
         file.write("# Re (FW, FW) Im (FW, FW) Re (FW, BW) Im (FW, BW)\n")
         for t in t_mesh:
-            mesh_point = (t0, t) if (k_point is None) else (t0, t, k_point)
+            mesh_point = (t0, t) if (spc_point is None) else (t0, t, spc_point)
             col_data = (g[FW, FW][*mesh_point][*target_indices].real,
                         g[FW, FW][*mesh_point][*target_indices].imag,
                         g[FW, BW][*mesh_point][*target_indices].real,
                         g[FW, BW][*mesh_point][*target_indices].imag)
             file.write("{} {} {} {}\n".format(*col_data))
 
+
 write_keldysh_gf_file('data/tddt_ref_sys_t0_00.txt',
                       theory.g_ref, target_indices=(0, 0, 0, 0))
 write_keldysh_gf_file('data/tddt_ref_sys_t0_01.txt',
                       theory.g_ref, target_indices=(0, 0, 0, 1))
 
+r_mesh = MeshCycLat(lat, n_k)
+r0, r1 = list(r_mesh)[:2]
 k0, k1 = list(bz_mesh)[:2]
 write_keldysh_gf_file("data/tddt_Gd0_R_k0.txt",
-                      Gd0_full_R, k_point=k0, target_indices=(0, 0))
+                      gd0_full_tr, spc_point=r0, target_indices=(0, 0))
 write_keldysh_gf_file("data/tddt_Gd0_R_k1.txt",
-                      Gd0_full_R, k_point=k1, target_indices=(0, 0))
+                      gd0_full_tr, spc_point=r1, target_indices=(0, 0))
 
 write_keldysh_gf_file("data/tddt_t0_loc.txt",
-                      local_part(G_latt), target_indices=(0, 0))
+                      local_part(g_tk), target_indices=(0, 0))
 write_keldysh_gf_file("data/tddt_CPT.txt",
-                      local_part(G_latt_CPT), target_indices=(0, 0))
-write_keldysh_gf_file("data/K.txt", local_part(K), target_indices=(0, 0))
+                      local_part(g_cpt_tk), target_indices=(0, 0))
 write_keldysh_gf_file("data/sigma_dual.txt",
-                      local_part(sigma_dual_full), target_indices=(0, 0))
+                      local_part(theory.Sigma_tk), target_indices=(0, 0))
 write_keldysh_gf_file("data/tddt_01.txt",
-                      G_latt_R, k_point=k1, target_indices=(0, 0))
+                      g_tr, spc_point=r1, target_indices=(0, 0))
 write_keldysh_gf_file("data/tddt_CPT_01.txt",
-                      G_latt_CPT_R, k_point=k1, target_indices=(0, 0))
+                      g_cpt_tr, spc_point=r1, target_indices=(0, 0))
 
 for ki, k in enumerate(bz_mesh):
     write_keldysh_gf_file(f"data/tddt_CPT_k{ki}.txt",
-                          G_latt_CPT, k_point=k, target_indices=(0, 0))
+                          g_cpt_tk, spc_point=k, target_indices=(0, 0))
     write_keldysh_gf_file(f"data/tddt_T_t0_k{ki}.txt",
-                          G_latt, k_point=k, target_indices=(0, 0))
+                          g_tk, spc_point=k, target_indices=(0, 0))

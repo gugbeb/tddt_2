@@ -280,6 +280,8 @@ class DualTRILEX:
         gimp_eps = self.g_imp @ self.eps_tk
         eps_gimp_eps = eps_gimp @ self.eps_tk
 
+        self.Delta_t = Delta
+
         Delta_gimp = Delta @ self.g_imp
         eps_gimp_Delta = eps_gimp @ Delta
         Delta_gimp_eps = Delta @ gimp_eps
@@ -408,6 +410,39 @@ class DualTRILEX:
         for br in product(Branch, repeat=2):
             for t1, t2, k in self.Sigma_tk.mesh:
                 self.Sigma_tk[br][t1, t2, k] += Sigma_hf_t[br][t1, t2]
+
+    def compute_lattice_gf(self):
+        r"""
+        Compute lattice Green's function.
+        """
+        K_tk = deepcopy(self.Sigma_tk)
+        for br in product(Branch, repeat=2):
+            for t1, t2, k in K_tk.mesh:
+                K_tk[br][t1, t2, k] += self.g_imp[br][t1, t2]
+
+        dg_F = -(K_tk @ self.eps_tk - K_tk @ self.Delta_t)
+        dg_Q = -(dg_F @ K_tk)
+        # NB: This Dyson equation is solved w.r.t. g_tk - K_tk.
+        # This way the RHS of the equation is Hermitian.
+        return solve_vie2(dg_F, dg_Q) + K_tk
+
+    def compute_lattice_gf_cpt(self):
+        r"""
+        Compute lattice Green's function in the CPT approximation.
+        """
+        g_imp_Delta = self.g_imp @ self.Delta_t
+        dg_F = -self.g_imp @ self.eps_tk
+        for br in product(Branch, repeat=2):
+            for t1, t2, k in dg_F.mesh:
+                dg_F[br][t1, t2, k] += g_imp_Delta[br][t1, t2]
+        dg_Q = -(dg_F @ self.g_imp)
+        # NB: This Dyson equation is solved w.r.t. g_tk - g_imp.
+        # This way the RHS of the equation is Hermitian.
+        g_tk = solve_vie2(dg_F, dg_Q)
+        for br in product(Branch, repeat=2):
+            for t1, t2, k in g_tk.mesh:
+                g_tk[br][t1, t2, k] += self.g_imp[br][t1, t2]
+        return g_tk
 
 
 def polarization_2nd_order(Lambda: KeldyshGF,
