@@ -44,6 +44,7 @@ from .realevol import (
     compute_keldysh_vertex3
 )
 from .vie2 import solve_vie2
+from .util import mapsum
 
 
 IndicesType = tuple[Union[int, str], Union[int, str]]
@@ -429,15 +430,17 @@ def polarization_2nd_order(Lambda: KeldyshGF,
 
     # f1(z_0, z_1, z_2) =
     #     \sum_i \int_C d\bar z \Lambda(z_0, \bar z, z_2) g1[i](\bar z, z_1)
-    f1 = conv(Lambda, g1[0], [(1, 0)], free_args=([0, 2], [1]))
-    for g1_i in g1[1:]:
-        f1 += conv(Lambda, g1_i, [(1, 0)], free_args=([0, 2], [1]))
+    f1 = mapsum(
+        lambda g1: conv(Lambda, g1, [(1, 0)], free_args=([0, 2], [1])),
+        g1
+    )
 
     # f2(z_0, z_1, z_2) =
     #     \sum_i \int_C d\bar z g2[i](\bar z, z_1) \Lambda(z_0, \bar z, z_2)
-    f2 = conv(g2[0], Lambda, [(0, 1)], free_args=([1], [0, 2]))
-    for g2_i in g2[1:]:
-        f2 += conv(g2_i, Lambda, [(0, 1)], free_args=([1], [0, 2]))
+    f2 = mapsum(
+        lambda g2: conv(g2, Lambda, [(0, 1)], free_args=([1], [0, 2])),
+        g2
+    )
 
     # \Pi(z_1, z_2) = -i \int_C dz' dz'' f1(z', z'', z_1) f2(z'', z', z_2)
     return -1j * conv(f1, f2, [(0, 1), (1, 0)])
@@ -463,15 +466,11 @@ def selfenergy_2nd_order(Lambda: KeldyshGF,
 
     # f1(z_1, z'''', z'') =
     #     \sum_i \int_C dz' \Lambda(z_1, z', z'') g[i](z', z'''')
-    f1 = conv(Lambda, g[0], [(1, 0)], free_args=([0, 2], [1]))
-    for g_i in g[1:]:
-        f1 += conv(Lambda, g_i, [(1, 0)], free_args=([0, 2], [1]))
+    f1 = mapsum(lambda g: conv(Lambda, g, [(1, 0)], free_args=([0, 2], [1])), g)
 
     # f2(z'''', z_2, z'') =
     #     \sum_i \int_C dz''' \Lambda(z'''', z_2, z''') w[i](z'', z''')
-    f2 = conv(Lambda, w[0], [(2, 1)], free_args=([0, 1], [2]))
-    for w_i in w[1:]:
-        f2 += conv(Lambda, w_i, [(2, 1)], free_args=([0, 1], [2]))
+    f2 = mapsum(lambda w: conv(Lambda, w, [(2, 1)], free_args=([0, 1], [2])), w)
 
     # \Sigma(z_1, z_2) = i \int_C dz'' dz'''' f1(z_1, z'''', z'')
     #                                         f2(z'''', z_2, z'')
@@ -498,14 +497,10 @@ def selfenergy_2nd_order_hf(Lambda: KeldyshGF,
 
     # n(z'') = \sum_i \int_C dz''' dz''''
     #     \Lambda(z''', z'''', z'') g[i](z'''', z''')
-    n = conv(Lambda, g[0], [(0, 1), (1, 0)])
-    for g_i in g[1:]:
-        n += conv(Lambda, g_i, [(0, 1), (1, 0)])
+    n = mapsum(lambda g: conv(Lambda, g, [(0, 1), (1, 0)]), g)
 
     # wn(z') = sum_i \int_C dz'' w[i](z', z'') n(z'')
-    wn = conv(w[0], n, [(1, 0)])
-    for w_i in w[1:]:
-        wn += conv(w_i, n, [(1, 0)])
+    wn = mapsum(lambda w: conv(w, n, [(1, 0)]), w)
 
     # \Sigma_{HF}(z_1, z_2) = -i \int_C dz' \Lambda(z_1, z_2, z') wn(z')
     return -1j * conv(Lambda, wn, [(2, 0)])
