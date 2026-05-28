@@ -21,11 +21,14 @@
 import unittest
 import numpy as np
 
-from tddt.util import fermi
+from tddt.util import mapsum, fermi
 
 
 class TestUtil(unittest.TestCase):
     """Utilities"""
+
+    def test_mapsum(self):
+        self.assertEqual(mapsum(lambda x: x.upper(), "abcd"), "ABCD")
 
     def test_fermi(self):
         self.assertAlmostEqual(fermi(1), 1.0 / (1.0 + np.exp(1)))

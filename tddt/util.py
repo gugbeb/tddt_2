@@ -20,12 +20,25 @@
 
 """Utilities"""
 
+from typing import Callable, Sequence
 import numpy as np
 
 """Lists of subscripts for numpy.einsum()"""
 subscripts = {'time': "abcdefgh",
               'nontime': "ABCDEFGH",
               'target': "ijklmnpqrstuvwxyz"}
+
+
+def mapsum(f: Callable, s: Sequence):
+    """
+    A map-reduce style function that uses summation as a reduction operation,
+    and computes the initial value from the first element of 's'.
+    """
+    it = iter(s)
+    res = f(next(it))
+    for x in it:
+        res += f(x)
+    return res
 
 
 def make_conv_res_nontime_mesh(a_nt_mesh_comps, b_nt_mesh_comps):
