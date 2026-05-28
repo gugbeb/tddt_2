@@ -83,7 +83,9 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g, g)
+        pi = polarization_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * g, 0.6 * g]
+        )
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1], self.t_mesh[1]))
         for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
@@ -105,7 +107,9 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g, g)
+        pi = polarization_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * g, 0.6 * g]
+        )
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
                                             self.t_mesh[1]),
@@ -133,7 +137,9 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g, g)
+        pi = polarization_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * g, 0.6 * g]
+        )
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
                                             self.t_mesh[1],
@@ -160,7 +166,9 @@ class TestDiagrams(unittest.TestCase):
 
         W = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
 
-        pi = polarization_2nd_order(Lambda, g, g)
+        pi = polarization_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * g, 0.6 * g]
+        )
 
         pi_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[1],
                                             self.t_mesh[1],
@@ -193,7 +201,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order(Lambda, g, w)
+        sigma = selfenergy_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0], self.t_mesh[0]))
         for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
@@ -218,7 +228,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order(Lambda, g, w)
+        sigma = selfenergy_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
                                                self.t_mesh[0]),
@@ -249,7 +261,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order(Lambda, g, w)
+        sigma = selfenergy_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
                                                self.t_mesh[0],
@@ -279,7 +293,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order(Lambda, g, w)
+        sigma = selfenergy_2nd_order(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
                                                self.t_mesh[0],
@@ -312,7 +328,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+        sigma = selfenergy_2nd_order_hf(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0], self.t_mesh[0]))
         for b0, b1, b2, b3, b4, b5 in product(Branch, repeat=6):
@@ -338,7 +356,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+        sigma = selfenergy_2nd_order_hf(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
                                                self.t_mesh[0]),
@@ -368,7 +388,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+        sigma = selfenergy_2nd_order_hf(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
                                                self.t_mesh[0],
@@ -397,7 +419,9 @@ class TestDiagrams(unittest.TestCase):
         W0 = GregoryIntegrator(2).weights_conv(self.t_mesh[0])
         W1 = GregoryIntegrator(2).weights_conv(self.t_mesh[1])
 
-        sigma = selfenergy_2nd_order_hf(Lambda, g, w)
+        sigma = selfenergy_2nd_order_hf(
+            Lambda, [0.3 * g, 0.7 * g], [0.4 * w, 0.6 * w]
+        )
 
         sigma_ref = KeldyshGF(mesh=MeshProduct(self.t_mesh[0],
                                                self.t_mesh[0],

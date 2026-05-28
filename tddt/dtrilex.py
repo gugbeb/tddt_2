@@ -23,7 +23,7 @@
 from copy import deepcopy
 from enum import Enum
 from itertools import product
-from typing import Union
+from typing import Union, Sequence
 import numpy as np
 
 from triqs.gf import MeshReTime, MeshBrZone, MeshProduct, Gf
@@ -333,64 +333,103 @@ class DualTRILEX:
         self.W0prime = solve_vie2(-U_tq_pi_imp, U_tq_pi_imp_U_tq)
 
 
-def polarization_2nd_order(Lambda: KeldyshGF, g1: KeldyshGF, g2: KeldyshGF):
+def polarization_2nd_order(Lambda: KeldyshGF,
+                           g1: Sequence[KeldyshGF],
+                           g2: Sequence[KeldyshGF]):
     r"""
     2nd order contribution to the polarization function.
 
     Lambda: 3-point vertex.
-    g1: 1st fermionic line.
-    g2: 2nd fermionic line.
+    g1: A list of all contributions to the 1st fermionic line.
+    g2: A list of all contributions to the 2nd fermionic line.
     """
     assert Lambda.n_args == 3, "Lambda must be a 3-point vertex"
-    assert g1.n_args == 2, "g1 must be a 2-point GF"
-    assert g2.n_args == 2, "g2 must be a 2-point GF"
+    assert len(g1) > 0, "g1 must not be empty"
+    assert len(g2) > 0, "g2 must not be empty"
+    assert all(g1_i.n_args == 2 for g1_i in g1), \
+        "All elements of g1 must be 2-point GFs"
+    assert all(g2_i.n_args == 2 for g2_i in g2), \
+        "All elements of g2 must be 2-point GFs"
 
     # f1(z_0, z_1, z_2) =
-    #     \int_C d\bar z \Lambda(z_0, \bar z, z_2) g1(\bar z, z_1)
-    f1 = conv(Lambda, g1, [(1, 0)], free_args=([0, 2], [1]))
+    #     \sum_i \int_C d\bar z \Lambda(z_0, \bar z, z_2) g1[i](\bar z, z_1)
+    f1 = conv(Lambda, g1[0], [(1, 0)], free_args=([0, 2], [1]))
+    for g1_i in g1[1:]:
+        f1 += conv(Lambda, g1_i, [(1, 0)], free_args=([0, 2], [1]))
+
     # f2(z_0, z_1, z_2) =
-    #     \int_C d\bar z g2(\bar z, z_1) \Lambda(z_0, \bar z, z_2)
-    f2 = conv(g2, Lambda, [(0, 1)], free_args=([1], [0, 2]))
+    #     \sum_i \int_C d\bar z g2[i](\bar z, z_1) \Lambda(z_0, \bar z, z_2)
+    f2 = conv(g2[0], Lambda, [(0, 1)], free_args=([1], [0, 2]))
+    for g2_i in g2[1:]:
+        f2 += conv(g2_i, Lambda, [(0, 1)], free_args=([1], [0, 2]))
+
     # \Pi(z_1, z_2) = -i \int_C dz' dz'' f1(z', z'', z_1) f2(z'', z', z_2)
     return -1j * conv(f1, f2, [(0, 1), (1, 0)])
 
 
-def selfenergy_2nd_order(Lambda: KeldyshGF, g: KeldyshGF, w: KeldyshGF):
+def selfenergy_2nd_order(Lambda: KeldyshGF,
+                         g: Sequence[KeldyshGF],
+                         w: Sequence[KeldyshGF]):
     r"""
     2nd order contribution to the self-energy function.
 
     Lambda: 3-point vertex.
-    g: Fermionic line.
-    w: Bosonic line.
+    g: A list of all contributions to the fermionic line.
+    w: A list of all contributions to the bosonic line.
     """
     assert Lambda.n_args == 3, "Lambda must be a 3-point vertex"
-    assert g.n_args == 2, "g must be a 2-point GF"
-    assert w.n_args == 2, "w must be a 2-point GF"
+    assert len(g) > 0, "g must not be empty"
+    assert len(w) > 0, "w must not be empty"
+    assert all(g_i.n_args == 2 for g_i in g), \
+        "All elements of g must be 2-point GFs"
+    assert all(w_i.n_args == 2 for w_i in w), \
+        "All elements of w must be 2-point GFs"
 
-    # f1(z_1, z'''', z'') = \int_C dz' \Lambda(z_1, z', z'') g(z', z'''')
-    f1 = conv(Lambda, g, [(1, 0)], free_args=([0, 2], [1]))
-    # f2(z'''', z_2, z'') = \int_C dz''' \Lambda(z'''', z_2, z''') w(z'', z''')
-    f2 = conv(Lambda, w, [(2, 1)], free_args=([0, 1], [2]))
+    # f1(z_1, z'''', z'') =
+    #     \sum_i \int_C dz' \Lambda(z_1, z', z'') g[i](z', z'''')
+    f1 = conv(Lambda, g[0], [(1, 0)], free_args=([0, 2], [1]))
+    for g_i in g[1:]:
+        f1 += conv(Lambda, g_i, [(1, 0)], free_args=([0, 2], [1]))
+
+    # f2(z'''', z_2, z'') =
+    #     \sum_i \int_C dz''' \Lambda(z'''', z_2, z''') w[i](z'', z''')
+    f2 = conv(Lambda, w[0], [(2, 1)], free_args=([0, 1], [2]))
+    for w_i in w[1:]:
+        f2 += conv(Lambda, w_i, [(2, 1)], free_args=([0, 1], [2]))
+
     # \Sigma(z_1, z_2) = i \int_C dz'' dz'''' f1(z_1, z'''', z'')
     #                                         f2(z'''', z_2, z'')
     return 1j * conv(f1, f2, [(1, 0), (2, 2)])
 
 
-def selfenergy_2nd_order_hf(Lambda: KeldyshGF, g: KeldyshGF, w: KeldyshGF):
+def selfenergy_2nd_order_hf(Lambda: KeldyshGF,
+                            g: Sequence[KeldyshGF],
+                            w: Sequence[KeldyshGF]):
     r"""
     Hartree-Fock contribution to the self-energy function.
 
     Lambda: 3-point vertex.
-    g: Fermionic line.
-    w: Bosonic line.
+    g: A list of all contributions to the fermionic line.
+    w: A list of all contributions to the bosonic line.
     """
     assert Lambda.n_args == 3, "Lambda must be a 3-point vertex"
-    assert g.n_args == 2, "g must be a 2-point GF"
-    assert w.n_args == 2, "w must be a 2-point GF"
+    assert len(g) > 0, "g must not be empty"
+    assert len(w) > 0, "w must not be empty"
+    assert all(g_i.n_args == 2 for g_i in g), \
+        "All elements of g must be 2-point GFs"
+    assert all(w_i.n_args == 2 for w_i in w), \
+        "All elements of w must be 2-point GFs"
 
-    # n(z'') = \int_C dz''' dz'''' \Lambda(z''', z'''', z'') g(z'''', z''')
-    n = conv(Lambda, g, [(0, 1), (1, 0)])
-    # wn(z') = \int_C dz'' w(z', z'') n(z'')
-    wn = conv(w, n, [(1, 0)])
+    # n(z'') = \sum_i \int_C dz''' dz''''
+    #     \Lambda(z''', z'''', z'') g[i](z'''', z''')
+    n = conv(Lambda, g[0], [(0, 1), (1, 0)])
+    for g_i in g[1:]:
+        n += conv(Lambda, g_i, [(0, 1), (1, 0)])
+
+    # wn(z') = sum_i \int_C dz'' w[i](z', z'') n(z'')
+    wn = conv(w[0], n, [(1, 0)])
+    for w_i in w[1:]:
+        wn += conv(w_i, n, [(1, 0)])
+
     # \Sigma_{HF}(z_1, z_2) = -i \int_C dz' \Lambda(z_1, z_2, z') wn(z')
     return -1j * conv(Lambda, wn, [(2, 0)])
