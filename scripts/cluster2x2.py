@@ -278,71 +278,52 @@ print("======================")
 
 ######################### Write results ########################################
 
-os.makedirs(output_dir, exist_ok=True)
+def write_keldysh_gf_file(filename, g, spc_point=None, target_indices=()):
+    """
+    Write (FW, FW) and (FW, BW) components of a 2-point KeldyshGF
+    object to a text file.
+    """
+    FW, BW = Branch
+    t_mesh = g.time_mesh.components[1]
+    t0 = next(iter(t_mesh))
+    with open(filename, 'w') as file:
+        file.write("# t Re (FW, BW) Im (FW, BW) Re (BW, FW) Im (BW, FW)\n")
+        for t in t_mesh:
+            mesh_point = (t, t0) if (spc_point is None) else (t, t0, spc_point)
+            col_data = (t.value,
+                        g[FW, BW][*mesh_point][*target_indices].real,
+                        g[FW, BW][*mesh_point][*target_indices].imag,
+                        g[BW, FW][*mesh_point][*target_indices].real,
+                        g[BW, FW][*mesh_point][*target_indices].imag)
+            file.write("{} {} {} {}\n".format(*col_data))
+
+
+write_keldysh_gf_file('data/tddt_ref_sys_t0_00.txt',
+                      theory.g_ref, target_indices=(0, 0, 0, 0))
+write_keldysh_gf_file('data/tddt_ref_sys_t0_01.txt',
+                      theory.g_ref, target_indices=(0, 0, 0, 1))
 
 r_mesh = MeshCycLat(lat, n_k)
 r0, r1 = list(r_mesh)[:2]
+k0, k1 = list(bz_mesh)[:2]
+write_keldysh_gf_file("data/tddt_Gd0_R_k0.txt",
+                      gd0_full_tr, spc_point=r0, target_indices=(0, 0, 0, 0))
+write_keldysh_gf_file("data/tddt_Gd0_R_k1.txt",
+                      gd0_full_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
 
+write_keldysh_gf_file("data/tddt_t0_loc.txt",
+                      local_part(g_tk), target_indices=(0, 0, 0, 0))
+write_keldysh_gf_file("data/tddt_CPT.txt",
+                      local_part(g_cpt_tk), target_indices=(0, 0, 0, 0))
+write_keldysh_gf_file("data/sigma_dual.txt",
+                      local_part(theory.Sigma_tk), target_indices=(0, 0, 0, 0))
+write_keldysh_gf_file("data/tddt_01.txt",
+                      g_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
+write_keldysh_gf_file("data/tddt_CPT_01.txt",
+                      g_cpt_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
 
-def _write_simple():
-    write_keldysh_gf_file(os.path.join(output_dir, 'tddt_ref_sys_t0_00.txt'),
-                          theory.g_ref, target_indices=(0, 0, 0, 0))
-    write_keldysh_gf_file(os.path.join(output_dir, 'tddt_ref_sys_t0_01.txt'),
-                          theory.g_ref, target_indices=(0, 0, 0, 1))
-
-    write_keldysh_gf_file(os.path.join(output_dir, "tddt_Gd0_R_k0.txt"),
-                          gd0_full_tr, spc_point=r0, target_indices=(0, 0, 0, 0))
-    write_keldysh_gf_file(os.path.join(output_dir, "tddt_Gd0_R_k1.txt"),
-                          gd0_full_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
-
-    write_keldysh_gf_file(os.path.join(output_dir, "tddt_t0_loc.txt"),
-                          local_part(g_tk), target_indices=(0, 0, 0, 0))
-    write_keldysh_gf_file(os.path.join(output_dir, "tddt_CPT.txt"),
-                          local_part(g_cpt_tk), target_indices=(0, 0, 0, 0))
-    write_keldysh_gf_file(os.path.join(output_dir, "sigma_dual.txt"),
-                          local_part(theory.Sigma_tk), target_indices=(0, 0, 0, 0))
-    write_keldysh_gf_file(os.path.join(output_dir, "tddt_01.txt"),
-                          g_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
-    write_keldysh_gf_file(os.path.join(output_dir, "tddt_CPT_01.txt"),
-                          g_cpt_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
-
-    for ki, k in enumerate(bz_mesh):
-        write_keldysh_gf_file(os.path.join(output_dir, f"tddt_CPT_k{ki}.txt"),
-                              g_cpt_tk, spc_point=k, target_indices=(0, 0, 0, 0))
-        write_keldysh_gf_file(os.path.join(output_dir, f"tddt_T_t0_k{ki}.txt"),
-                              g_tk, spc_point=k, target_indices=(0, 0, 0, 0))
-
-    print(f"Text files written to {output_dir}/")
-
-
-def _write_h5():
-    import h5py
-    h5_path = os.path.join(output_dir, output_name + ".h5")
-    print(f"Writing results to {h5_path} ...")
-    with h5py.File(h5_path, "w") as f:
-        f.create_dataset("t_mesh", data=np.linspace(0, t_max, n_t))
-
-        ref = f.require_group("ref")
-        save_keldysh_gf_2pt_h5(ref, "g_ref", theory.g_ref)
-        save_keldysh_gf_2pt_h5(ref, "g_imp", theory.g_imp)
-
-        dual = f.require_group("dual")
-        save_keldysh_gf_2pt_h5(dual, "Sigma_loc", local_part(theory.Sigma_tk))
-        save_keldysh_gf_2pt_h5(dual, "Gd0_loc",   local_part(theory.Gd0_reg_tk))
-
-        lat_grp = f.require_group("lattice")
-        save_keldysh_gf_2pt_h5(lat_grp, "g_loc",     local_part(g_tk))
-        save_keldysh_gf_2pt_h5(lat_grp, "g_cpt_loc", local_part(g_cpt_tk))
-        # Full k-resolved (all k in one dataset per Keldysh component)
-        save_keldysh_gf_2pt_h5(lat_grp, "g_k",       g_tk)
-        save_keldysh_gf_2pt_h5(lat_grp, "g_cpt_k",   g_cpt_tk)
-        # Real-space (all r in one dataset per Keldysh component)
-        save_keldysh_gf_2pt_h5(lat_grp, "gd0_r",     gd0_full_tr)
-
-    print(f"Done — {h5_path}")
-
-if _rank == 0:
-    if _args.simple_output:
-        _write_simple()
-    else:
-        _write_h5()
+for ki, k in enumerate(bz_mesh):
+    write_keldysh_gf_file(f"data/tddt_G_lat_CPT_k{ki}.txt",
+                          g_cpt_tk, spc_point=k, target_indices=(0, 0, 0, 0))
+    write_keldysh_gf_file(f"data/tddt_G_lat_k{ki}.txt",
+                          g_tk, spc_point=k, target_indices=(0, 0, 0, 0))
