@@ -18,6 +18,7 @@
 #
 # ##############################################################################
 
+import os
 import numpy as np
 
 import triqs.utility.mpi  # noqa: F401
@@ -175,6 +176,9 @@ gd0_full_tr = lattice_fourier(gd0_full_tk, apply_to=SpacialArgs.BRZONE)
 
 ######################### Write results to text files ##########################
 
+# Create the data directory
+os.makedirs("data", exist_ok=True)
+
 
 def write_keldysh_gf_file(filename, g, spc_point=None, target_indices=()):
     """
@@ -204,23 +208,23 @@ r_mesh = MeshCycLat(lat, n_k)
 r0, r1 = list(r_mesh)[:2]
 k0, k1 = list(bz_mesh)[:2]
 write_keldysh_gf_file("data/tddt_Gd0_R_k0.txt",
-                      gd0_full_tr, spc_point=r0, target_indices=(0, 0))
+                      gd0_full_tr, spc_point=r0, target_indices=(0, 0, 0, 0))
 write_keldysh_gf_file("data/tddt_Gd0_R_k1.txt",
-                      gd0_full_tr, spc_point=r1, target_indices=(0, 0))
+                      gd0_full_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
 
 write_keldysh_gf_file("data/tddt_t0_loc.txt",
-                      local_part(g_tk), target_indices=(0, 0))
+                      local_part(g_tk), target_indices=(0, 0, 0, 0))
 write_keldysh_gf_file("data/tddt_CPT.txt",
-                      local_part(g_cpt_tk), target_indices=(0, 0))
+                      local_part(g_cpt_tk), target_indices=(0, 0, 0, 0))
 write_keldysh_gf_file("data/sigma_dual.txt",
-                      local_part(theory.Sigma_tk), target_indices=(0, 0))
+                      local_part(theory.Sigma_tk), target_indices=(0, 0, 0, 0))
 write_keldysh_gf_file("data/tddt_01.txt",
-                      g_tr, spc_point=r1, target_indices=(0, 0))
+                      g_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
 write_keldysh_gf_file("data/tddt_CPT_01.txt",
-                      g_cpt_tr, spc_point=r1, target_indices=(0, 0))
+                      g_cpt_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
 
 for ki, k in enumerate(bz_mesh):
     write_keldysh_gf_file(f"data/tddt_CPT_k{ki}.txt",
-                          g_cpt_tk, spc_point=k, target_indices=(0, 0))
+                          g_cpt_tk, spc_point=k, target_indices=(0, 0, 0, 0))
     write_keldysh_gf_file(f"data/tddt_T_t0_k{ki}.txt",
-                          g_tk, spc_point=k, target_indices=(0, 0))
+                          g_tk, spc_point=k, target_indices=(0, 0, 0, 0))
