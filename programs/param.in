@@ -1,0 +1,21 @@
+--model 1
+--U0 1.0
+--U 1.0
+--U1 1.0
+--n_t 51
+--t_max 8.0
+--eps_array   0.0    # flat band center e0 (also used as ref bath energy)
+--t_ref_array 1.0    # ref discrete bath hopping
+--t_sys_array 1.2    # hopping to flat band (t_flat)
+--T 5.0
+--t_perp 0.1
+--V  0.1
+--hartree_on
+#--flat_sys_bath
+#--D .2
+--output_dir data/Mickey1
+#--simple_output (will save .dat files) or --output_name dtrimp (will save dtrimp.h5 file)
+--output_name dtrimp
+# Peierls / laser field parameters for t_perp (model 2, --field_on required)
+#--A0    0.1
+#--Omega 1
