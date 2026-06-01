@@ -744,11 +744,11 @@ class DualQuantities:
         """
         print("Updating bosonic propagators...")
         for channel in self.channels:
-            '''
             self.w[channel] = self.solveVie2(
                 -self.w0[channel] @ self.pi[channel],
                 self.w0[channel]
             )
+
             '''
             result_reg = self.w0[channel].reg
             result_reg += solve_vie2((-self.w0[channel] @ self.pi[channel]).reg,\
@@ -760,7 +760,7 @@ class DualQuantities:
                 sing=self.w0[channel].sing,
                 reg=result_reg,
                 )
-            
+            '''
             herm_viol(self.w[channel], f"w[{channel}]")
 
     # ------------------------------------------------------------------
