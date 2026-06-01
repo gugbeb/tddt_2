@@ -189,13 +189,14 @@ def write_keldysh_gf_file(filename, g, spc_point=None, target_indices=()):
     t_mesh = g.time_mesh.components[1]
     t0 = next(iter(t_mesh))
     with open(filename, 'w') as file:
-        file.write("# Re (FW, FW) Im (FW, FW) Re (FW, BW) Im (FW, BW)\n")
+        file.write("# t Re (FW, BW) Im (FW, BW) Re (BW, FW) Im (BW, FW)\n")
         for t in t_mesh:
-            mesh_point = (t0, t) if (spc_point is None) else (t0, t, spc_point)
-            col_data = (g[FW, FW][*mesh_point][*target_indices].real,
-                        g[FW, FW][*mesh_point][*target_indices].imag,
+            mesh_point = (t, t0) if (spc_point is None) else (t, t0, spc_point)
+            col_data = (t.value,
                         g[FW, BW][*mesh_point][*target_indices].real,
-                        g[FW, BW][*mesh_point][*target_indices].imag)
+                        g[FW, BW][*mesh_point][*target_indices].imag,
+                        g[BW, FW][*mesh_point][*target_indices].real,
+                        g[BW, FW][*mesh_point][*target_indices].imag)
             file.write("{} {} {} {}\n".format(*col_data))
 
 
@@ -224,7 +225,7 @@ write_keldysh_gf_file("data/tddt_CPT_01.txt",
                       g_cpt_tr, spc_point=r1, target_indices=(0, 0, 0, 0))
 
 for ki, k in enumerate(bz_mesh):
-    write_keldysh_gf_file(f"data/tddt_CPT_k{ki}.txt",
+    write_keldysh_gf_file(f"data/tddt_G_lat_CPT_k{ki}.txt",
                           g_cpt_tk, spc_point=k, target_indices=(0, 0, 0, 0))
-    write_keldysh_gf_file(f"data/tddt_T_t0_k{ki}.txt",
+    write_keldysh_gf_file(f"data/tddt_G_lat_k{ki}.txt",
                           g_tk, spc_point=k, target_indices=(0, 0, 0, 0))
