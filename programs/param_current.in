@@ -1,0 +1,15 @@
+--U0 1.0
+--U  1.0
+--U1 1.0
+--n_t 50
+--t_max 8.0
+--T 5.0
+--V_bias 5          # bias voltage: both refs/units see baths at +0.25 and -0.25
+--t_ref_array 1.0 1.0 # two bath sites per ref: L (t=1.0) and R (t=1.0)
+--t_sys_array 1.2     # sys unit 1: left lead only
+                      # --t_sys_array_2 1.2  # sys unit 2: right lead only (default: t_sys_array)
+--t_perp 0.5          # inter-site hopping t_⊥
+--V 0.1               # inter-site Coulomb V
+--hartree_on
+--output_dir data/current
+--output_name current_results

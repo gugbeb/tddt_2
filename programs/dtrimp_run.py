@@ -130,62 +130,25 @@ def _build_delta_gimp_2(t_mesh, target_shape, t_perp, g_imp, delta_hyb):
 # -----------------------------------------------------------------------
 def _write_simple(out_dir, model, t_mesh, n_t,
                   G_ref, G_sys, G_dtrilex, G_cpt, Sigma_dtrilex):
-
     brf, brb = Branch.FORWARD, Branch.BACKWARD
     idx = 0
 
-    def write_both_components(filename_base, G):
-        """
-        Write lesser (FB) and greater (BF) components.
-
-        Produces:
-            filename_base.dat
-            filename_base_greater.dat
-        """
-
-        # Lesser component (FB)
-        print_GF(
-            os.path.join(out_dir, f"{filename_base}.dat"),
-            G,
-            brf,
-            brb,
-            t_mesh,
-            idx0=idx
-        )
-
-        # Greater component (BF)
-        print_GF(
-            os.path.join(out_dir, f"{filename_base}_greater.dat"),
-            G,
-            brb,
-            brf,
-            t_mesh,
-            idx0=idx
-        )
-
     if model == 1:
-
-        write_both_components("G_ref",         G_ref)
-        write_both_components("G_sys",         G_sys)
-        write_both_components("G_Dtrilex",     G_dtrilex)
-        write_both_components("G_cpt",         G_cpt)
-        write_both_components("Sigma_Dtrilex", Sigma_dtrilex)
-
+        print_GF(os.path.join(out_dir, "G_ref.dat"),         G_ref,         brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_sys.dat"),         G_sys,         brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_Dtrilex.dat"),     G_dtrilex,     brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_cpt.dat"),         G_cpt,         brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "Sigma_Dtrilex.dat"), Sigma_dtrilex, brf, brb, t_mesh, idx0=idx)
     else:
-
-        write_both_components("G_ref",                  G_ref)
-
-        write_both_components("G_sys_par",             G_sys.par.reg)
-        write_both_components("G_sys_perp",            G_sys.perp.reg)
-
-        write_both_components("G_Dtrilex_par",         G_dtrilex.par.reg)
-        write_both_components("G_Dtrilex_perp",        G_dtrilex.perp.reg)
-
-        write_both_components("G_cpt_par",             G_cpt.par.reg)
-        write_both_components("G_cpt_perp",            G_cpt.perp.reg)
-
-        write_both_components("Sigma_Dtrilex_par",     Sigma_dtrilex.par.reg)
-        write_both_components("Sigma_Dtrilex_perp",    Sigma_dtrilex.perp.reg)
+        print_GF(os.path.join(out_dir, "G_ref.dat"),               G_ref,                 brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_sys_par.dat"),           G_sys.par.reg,         brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_sys_perp.dat"),          G_sys.perp.reg,        brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_Dtrilex_par.dat"),       G_dtrilex.par.reg,     brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_Dtrilex_perp.dat"),      G_dtrilex.perp.reg,    brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_cpt_par.dat"),           G_cpt.par.reg,         brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "G_cpt_perp.dat"),          G_cpt.perp.reg,        brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "Sigma_Dtrilex_par.dat"),   Sigma_dtrilex.par.reg, brf, brb, t_mesh, idx0=idx)
+        print_GF(os.path.join(out_dir, "Sigma_Dtrilex_perp.dat"),  Sigma_dtrilex.perp.reg,brf, brb, t_mesh, idx0=idx)
 
     print(f"Done — plain-text files written to {out_dir}/")
 

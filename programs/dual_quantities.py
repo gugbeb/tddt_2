@@ -109,6 +109,30 @@ def herm_viol(G, name: str) -> float:
     return mx_abs
 
 
+def sym_viol_01_10(G, name: str) -> float:
+    """Print max|G_{01} - G_{10}| over all Keldysh components.
+
+    For a site-symmetric model (V_bias=0) this should be zero for all
+    propagators.  Non-zero values with bias are expected and quantify
+    how much the left/right symmetry is broken.
+    Silently skips scalar GFs (target_shape without a 2×2 site block).
+    """
+    if isinstance(G, KeldyshGF_2x2_components):
+        return sym_viol_01_10(G.par.reg, f"{name}[par]")
+    if isinstance(G, KeldyshGF_2_components):
+        return sym_viol_01_10(G.reg, name)
+    mx = 0.0
+    for b1 in (Branch.FORWARD, Branch.BACKWARD):
+        for b2 in (Branch.FORWARD, Branch.BACKWARD):
+            data = G[b1, b2].data
+            if data.ndim < 4 or data.shape[-2] < 2 or data.shape[-1] < 2:
+                return 0.0   # scalar GF — skip silently
+            diff = float(np.max(np.abs(data[..., 0, 1] - data[..., 1, 0])))
+            mx = max(mx, diff)
+    print(f"  sym_01_10  {name:<35s}  max|G_01 - G_10| = {mx:.3e}")
+    return mx
+
+
 class DualQuantities:
     """
     All dual propagators and self-energies for the Mickey-Mouse 1 model.
@@ -126,7 +150,8 @@ class DualQuantities:
     The dict keys 'ch' and 'sp' label the charge and spin channels.
     """
 
-    def __init__(self, time_mesh, dual_params, delta_tilde, g_imp, pi_imp, Lambda, *, init_g=None, init_w=None):
+    def __init__(self, time_mesh, dual_params, delta_tilde, g_imp, pi_imp, Lambda, *,
+                 target_shape=None, init_g=None, init_w=None):
         """
         Initialise all bare dual propagators and run the first bosonic update.
 
@@ -135,7 +160,9 @@ class DualQuantities:
         time_mesh : MeshReTime
             Real-time mesh shared by all propagators.
         dual_params : dict
-            Interaction parameters for both reference and system:
+            Interaction parameters for both reference and system.
+            Values may be scalars (single-site case) or numpy arrays of shape
+            matching target_shape (multi-site / biased-junction case):
               'U_ch'     — charge interaction of the reference  (+U/2)
               'U_sp'     — spin interaction of the reference    (-U/2)
               'U_ch_sys' — charge interaction of the benchmark system
@@ -150,6 +177,10 @@ class DualQuantities:
         Lambda : dict of KeldyshGF
             Three-point vertex Λ^ς of the reference system (Eq. 10),
             keyed by channel.
+        target_shape : tuple of int, optional
+            Shape of the site-space indices of all propagators.
+            Default (1, 1) — single-site case.  Pass (2, 2) for the biased
+            two-site case; dual_params values must then be 2×2 numpy arrays.
         init_g : KeldyshGF_2_components, optional
             Warm-start value for the dual GF G̃.  If None, G̃⁰ is used.
         init_w : dict of KeldyshGF_2_components, optional
@@ -159,7 +190,7 @@ class DualQuantities:
         self.t_mesh = time_mesh
         self.tt_mesh = MeshProduct(time_mesh, time_mesh)
 
-        self.target_shape = (1, 1)
+        self.target_shape = (1, 1) if target_shape is None else tuple(target_shape)
 
         self.channels = ["ch", "sp"]
         # Reference and system interactions per channel.
@@ -176,11 +207,11 @@ class DualQuantities:
 
         # Compute bare dual GF G̃⁰ (Eq. 12); warm-start old times from init_g.
         self.g0 = self.setGdual(g_imp)
-        herm_viol(self.g0, "g0")
+        herm_viol(self.g0, "g0"); sym_viol_01_10(self.g0, "g0")
         self.g = self.g0
         if init_g is not None:
             _fill_old_times_2_components(self.g, init_g)
-        herm_viol(self.g, "g (init)")
+        herm_viol(self.g, "g (init)"); sym_viol_01_10(self.g, "g (init)")
 
         # Singular (contact) interactions U and U_sys as Singular2PKeldyshGF objects.
         self.w_sing = self.setW_bare(self.U)
@@ -193,8 +224,8 @@ class DualQuantities:
 
         # Bare dual boson W̃⁰ (Eq. 17); warm-start old times from init_w.
         self.w0 = self.setW0(pi_imp)
-        herm_viol(self.w0["ch"], "w0[ch]")
-        herm_viol(self.w0["sp"], "w0[sp]")
+        herm_viol(self.w0["ch"], "w0[ch]"); sym_viol_01_10(self.w0["ch"], "w0[ch]")
+        herm_viol(self.w0["sp"], "w0[sp]"); sym_viol_01_10(self.w0["sp"], "w0[sp]")
         self.w = {}
         self.computeBosonPropagators()
         if init_w is not None:
@@ -353,13 +384,6 @@ class DualQuantities:
         """
         return conv(Lambda, g_in, [(1, 0)], free_args=([0, 2], [1]))
     
-    def compute_f1_herm(self, Lambda, g_in):
-        """
-        F1(4,1,3) = ∫d4 G̃(2,4) Λ(4,1,3)    — first intermediate (Eq. 18).
-        Contracts the first time argument of G̃ with the second argument of Λ.
-        """
-        return conv(g_in, Lambda, [(1, 0)], free_args=([0], [1, 2]))
-
     def compute_f1_HF(self, Lambda, g_in):
         """
         Hartree-Fock variant of F1: contracts both time arguments of G̃ with Λ,
@@ -381,16 +405,6 @@ class DualQuantities:
             return _lambda_times_sing(Lambda, w_in)
         return conv(Lambda, w_in, [(2, 1)], free_args=([0, 1], [2]))
     
-    def compute_f2_herm(self, Lambda, w_in):
-        """
-        F2(1,2,3) = ∫d4 Λ(1,2,4) W̃(3,4)   — second intermediate (Eq. 19).
-        Contracts the third argument of Λ with the second argument of W̃.
-        """
-        if isinstance(w_in, Singular2PKeldyshGF):
-            # W̃ = f(t)·δ_C  →  F2(t1,t2,t3) = Λ(t1,t2,t3)·f(t3), exact.
-            return _sing_times_lambda(w_in, Lambda)
-        return conv(Lambda, w_in, [(2, 0)], free_args=([0, 1], [2]))
-
     def compute_f2_HF(self, w, n):
         """
         Hartree-Fock variant of F2: contracts W̃ with the local density N.
@@ -561,8 +575,10 @@ class DualQuantities:
         Implements Eq. (22):
             Π̃_ς(1,2) = -i ∑_{σσ'} ∫d(34) F1^{σσ'}_ς(3,4,1) F1^{σ'σ}_ς(4,3,2)
 
-        The factor of 2 accounts for the sum over the two spin components
-        in the paramagnetic case (σ = ↑↓, both equal by assumption).
+        In the paramagnetic case with spin-diagonal Λ (Λ^{↑↓} = 0), only (↑↑) and
+        (↓↓) terms contribute and they are equal, giving a factor of 2. Only the
+        (↑↑) intermediate is computed (Lambda stores only the up-up component), so
+        the factor of 2 is applied explicitly.
 
         Result is stored in self.pi, keyed by channel.
 
@@ -571,8 +587,8 @@ class DualQuantities:
         Lambda : dict of KeldyshGF — three-point vertices per channel.
         """
         for channel in self.channels:
-            # Factor 2: sum over spin (↑↑ + ↓↓, both equal in paramagnetic case).
-            self.pi[channel] = self.convolution2ndOrder(
+            # Factor 2: Σ_{σσ'} → 2 × (↑↑) in the paramagnetic case.
+            self.pi[channel] = 2 * self.convolution2ndOrder(
                 Lambda[channel],
                 self.g,
                 self.g,         # bosonic self-energy uses G̃ twice (Eq. 22)
@@ -580,7 +596,7 @@ class DualQuantities:
                 self.compute_f1,
                 self.compute_pi,
             )
-            herm_viol(self.pi[channel], f"pi[{channel}]")
+            herm_viol(self.pi[channel], f"pi[{channel}]"); sym_viol_01_10(self.pi[channel], f"pi[{channel}]")
             # Symmetrise: Gregory quadrature gives O(dt^6) violations; suppress them.
             #self.pi[channel].reg = 0.5 * (
             #    self.pi[channel].reg + herm_conj(self.pi[channel].reg)
@@ -614,7 +630,7 @@ class DualQuantities:
         # hermiticity violation. Implement using Langreth decomposition to preserve
         # hermiticity by computing sigma_ret and sigma_< separately.
         #self.sigma.reg = 0.5 * (self.sigma.reg + herm_conj(self.sigma.reg))
-        herm_viol(self.sigma, "sigma")
+        herm_viol(self.sigma, "sigma"); sym_viol_01_10(self.sigma, "sigma")
         import os as _os
         _os.makedirs(plots_dir, exist_ok=True)
         plot_herm_viol(self.sigma, "sigma", save_dir=plots_dir)
@@ -729,7 +745,7 @@ class DualQuantities:
         """
         print("Updating fermionic propagator...")
         self.g = self.solveVie2(-self.g0 @ self.sigma, self.g0)
-        herm_viol(self.g, "g")
+        herm_viol(self.g, "g"); sym_viol_01_10(self.g, "g")
 
     def computeBosonPropagators(self):
         """
@@ -748,20 +764,7 @@ class DualQuantities:
                 -self.w0[channel] @ self.pi[channel],
                 self.w0[channel]
             )
-
-            '''
-            result_reg = self.w0[channel].reg
-            result_reg += solve_vie2((-self.w0[channel] @ self.pi[channel]).reg,\
-                                                                     (self.w0[channel] @ (-self.w0[channel] @ self.pi[channel]) @ self.w0[channel]).reg )
-            self.w[channel] = KeldyshGF_2_components(
-                self.t_mesh,
-                self.target_shape,
-                self.w0[channel].is_reg,
-                sing=self.w0[channel].sing,
-                reg=result_reg,
-                )
-            '''
-            herm_viol(self.w[channel], f"w[{channel}]")
+            herm_viol(self.w[channel], f"w[{channel}]"); sym_viol_01_10(self.w[channel], f"w[{channel}]")
 
     # ------------------------------------------------------------------
     # Self-consistency iteration
@@ -919,41 +922,61 @@ class DualQuantities2(DualQuantities):
 
     def convolution2ndOrder(self, Lambda, g, w, compute_f1, compute_f2, compute):
         """
-        Second-order diagram in the diagonalised basis for 2×2 propagators.
+        Second-order diagram (GW self-energy / polarisation) for 2×2 propagators.
 
-        For a bilinear diagram B(g, w) the diagonalisation identity gives:
-            B(g_∥, w_∥) + B(g_⊥, w_⊥) = [B(g_+, w_+) + B(g_-, w_-)] / 2  → par
-            B(g_∥, w_⊥) + B(g_⊥, w_∥) = [B(g_+, w_+) - B(g_-, w_-)] / 2  → perp
+        Unlike the Dyson equations, the GW self-energy and the polarisation are
+        *Hadamard* (element-wise) products in site space: the fermion and boson
+        lines carry the SAME pair of site indices, with no intermediate-site sum:
 
-        (see the polarisation expressions Eqs. 59-60 and self-energy Eqs. 69-70).
+            GW:           Σ_ij(1,2) ∝ G_ij(1,2) · W_ij(1,2)
+            polarisation: Π_ij(1,2) ∝ G_ij(1,2) · G_ji(2,1)
+
+        Hence the ∥/⊥ components decouple WITHOUT mixing — the diagonalising ±
+        trick (which is for matrix products Σ_k A_ik B_kj) does NOT apply here:
+
+            B(g_∥, w_∥)  → par      (on-site,   i=j)
+            B(g_⊥, w_⊥)  → perp     (inter-site, i≠j)
+
+        Cross terms B(g_∥, w_⊥), B(g_⊥, w_∥) do not occur.
         Falls back to the scalar parent method when g is not a 2×2 object.
         """
         if isinstance(g, KeldyshGF_2x2_components):
-            res_plus  = super().convolution2ndOrder(
-                Lambda, g.par + g.perp, w.par + w.perp, compute_f1, compute_f2, compute)
-            res_minus = super().convolution2ndOrder(
-                Lambda, g.par - g.perp, w.par - w.perp, compute_f1, compute_f2, compute)
             return KeldyshGF_2x2_components(
-                par  = 0.5 * (res_plus + res_minus),
-                perp = 0.5 * (res_plus - res_minus),
+                par  = super().convolution2ndOrder(
+                    Lambda, g.par,  w.par,  compute_f1, compute_f2, compute),
+                perp = super().convolution2ndOrder(
+                    Lambda, g.perp, w.perp, compute_f1, compute_f2, compute),
             )
         return super().convolution2ndOrder(Lambda, g, w, compute_f1, compute_f2, compute)
 
     def convolution2ndOrderHF(self, Lambda, g, w, compute_f1, compute_f2, compute):
         """
-        Hartree-Fock diagram in the diagonalised basis for 2×2 propagators.
+        Hartree-Fock (tadpole) diagram for 2×2 propagators.
 
-        Same diagonalisation as convolution2ndOrder; see Eqs. 69-70 (tadpole lines).
+        The tadpole is site-diagonal:
+            Σ^HF_ij = δ_ij · Σ_m W_im G_mm
+        so the external fermion legs share a local vertex (⇒ perp = 0), the
+        density loop G_mm is always on-site (⇒ uses g_∥ only), and the boson
+        line W_im sums over both loop sites m (⇒ W_∥ + W_⊥):
+
+            Σ^HF_∥ = B_HF(g_∥, w_∥) + B_HF(g_∥, w_⊥)
+            Σ^HF_⊥ = 0
+
+        where B_HF(g, w) = -iΛ·(w · N[g]) is the scalar parent diagram.
+        The diagonalising ± trick does NOT apply (this is not a matrix product).
+        Falls back to the scalar parent method when g is not a 2×2 object.
         """
         if isinstance(g, KeldyshGF_2x2_components):
-            res_plus  = super().convolution2ndOrderHF(
-                Lambda, g.par + g.perp, w.par + w.perp, compute_f1, compute_f2, compute)
-            res_minus = super().convolution2ndOrderHF(
-                Lambda, g.par - g.perp, w.par - w.perp, compute_f1, compute_f2, compute)
-            return KeldyshGF_2x2_components(
-                par  = 0.5 * (res_plus + res_minus),
-                perp = 0.5 * (res_plus - res_minus),
+            par = (
+                super().convolution2ndOrderHF(
+                    Lambda, g.par, w.par,  compute_f1, compute_f2, compute)
+                + super().convolution2ndOrderHF(
+                    Lambda, g.par, w.perp, compute_f1, compute_f2, compute)
             )
+            perp = KeldyshGF_2_components(
+                self.t_mesh, self.target_shape, is_reg=True
+            )
+            return KeldyshGF_2x2_components(par=par, perp=perp)
         return super().convolution2ndOrderHF(Lambda, g, w, compute_f1, compute_f2, compute)
 
     # ------------------------------------------------------------------

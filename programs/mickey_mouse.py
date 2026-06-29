@@ -178,12 +178,18 @@ class MickeyMouseModel:
         -------
         InitState object used by the real-time evolution library.
         """
+        # Force full LAPACK diagonalization by setting arpack_min_matrix_size
+        # larger than any sector dim (max sector ≤ 4**n_particles).
+        # Avoids ARPACK ncv failures for the small impurity Hilbert spaces used here.
+        eq_params = {
+            "arpack_min_matrix_size": 4 ** self.n_particles + 1,
+        }
         init_state = make_equilibrium_init_state(
             self.hamiltonian,
             fermion_indices=self.fops,
             boson_indices=set(),
             temperature=self.T,
-            params={},
+            params=eq_params,
         )
         return init_state
 
@@ -318,8 +324,8 @@ class MickeyMouseModel:
 
         self.pi_imp = {}
         for channel in self.channels:
-            # Solve (1 + χ_ς U^ς) * Π_ς = χ_ς  →  Π_ς  (Eq. 13)
-            susc_U = self.chi_imp[channel] * self.U_channel[channel]
+            # Solve (1 + U^ς χ_ς) * Π_ς = χ_ς  →  Π_ς  (Eq. 13)
+            susc_U = self.U_channel[channel] * self.chi_imp[channel]
             self.pi_imp[channel] = solve_vie2(susc_U, self.chi_imp[channel])
 
             # Reshape Π to carry explicit (1,1) target axes so it is compatible
@@ -504,8 +510,8 @@ class MickeyMouseModel2(MickeyMouseModel):
     """
     Mickey-Mouse² model: two coupled Mickey-Mouse units.
 
-    The full system consists of two identical Mickey-Mouse models connected by
-    an inter-site hopping t_⊥ and an inter-site Coulomb interaction V
+    The full system consists of two Mickey-Mouse models connected by an
+    inter-site hopping t_⊥ and an inter-site Coulomb interaction V
     (see Figure 1 and Section 2 of the notes).  The Hamiltonian is:
 
         H = H_site1(U) + H_site2(U)
@@ -515,6 +521,12 @@ class MickeyMouseModel2(MickeyMouseModel):
     The reference system for the dual transformation is a single Mickey-Mouse
     unit (MickeyMouseModel), and the system has sites 0,1 (first unit) and
     2,3 (second unit).
+
+    By default both units share the same bath parameters (eps_array, t_array),
+    giving the symmetric model used in dtrimp_run.py.  Pass 'eps_array_2' and
+    't_array_2' in model_params to give unit 2 independent bath parameters
+    (biased-junction case).  The per-unit hybridisations are then stored as
+    self.hyb1 and self.hyb2.
     """
 
     def __init__(self, model_params, t_mesh):
@@ -523,19 +535,30 @@ class MickeyMouseModel2(MickeyMouseModel):
         ----------
         model_params : dict
             Same keys as MickeyMouseModel, plus:
-              't_perp' — inter-site hopping between the two correlated sites.
-              'V'      — inter-site Coulomb interaction.
+              't_perp'      — inter-site hopping between the two correlated sites.
+              'V'           — inter-site Coulomb interaction.
+              'eps_array_2' — bath site energies for unit 2  (default: eps_array)
+              't_array_2'   — bath hoppings for unit 2       (default: t_array)
         t_mesh : MeshReTime
             Real-time mesh.
         """
-        # V, t_perp, and n_bath must be set before super().__init__ because the
-        # parent constructor calls setHamiltonian() and _n_particles_total(), both
-        # of which need these attributes.
+        # V, t_perp, n_bath, and unit-2 bath params must be set before
+        # super().__init__ because that constructor calls setHamiltonian()
+        # and _n_particles_total(), both of which need these attributes.
         self.V      = model_params["V"]
         self.t_perp = model_params["t_perp"]
-        # n_bath is needed by _n_particles_total before super().__init__ sets it.
         self.n_bath = len(model_params["eps_array"])
+        self.eps_array_2 = np.asarray(
+            model_params.get("eps_array_2", model_params["eps_array"]), dtype=float
+        )
+        self.t_array_2 = np.asarray(
+            model_params.get("t_array_2", model_params["t_array"]), dtype=float
+        )
         super().__init__(model_params, t_mesh)
+        # Per-unit hybridisations: hyb1 == self.hyb (computed by super),
+        # hyb2 uses unit-2 bath params (equal to hyb1 in the symmetric case).
+        self.hyb1 = self.hyb
+        self.hyb2 = self._setBath_unit(self.eps_array_2, self.t_array_2)
 
     def _n_particles_total(self):
         return 2 * (1 + self.n_bath)
@@ -563,7 +586,11 @@ class MickeyMouseModel2(MickeyMouseModel):
         bath1 = list(range(1, N))
         bath2 = list(range(N + 1, 2 * N))
         h1 = super().setHamiltonian(U, driven=driven, corr_idx=i0, bath_indices=bath1)
+        # Unit 2 may have different bath params (biased case); swap and restore.
+        _eps_save, _t_save = self.eps_array, self.t_array
+        self.eps_array, self.t_array = self.eps_array_2, self.t_array_2
         h2 = super().setHamiltonian(U, driven=driven, corr_idx=i1, bath_indices=bath2)
+        self.eps_array, self.t_array = _eps_save, _t_save
 
         if driven and self.field_on and self.A0 != 0.0:
             t_arr = np.array([float(t) for t in self.t_mesh])
@@ -589,6 +616,42 @@ class MickeyMouseModel2(MickeyMouseModel):
         n_unit2 = sum(n("up", s) + n("dn", s) for s in range(N, 2 * N))
         int_coulomb = 0.5 * self.V * n_unit1 * n_unit2
         return h1 + h2 + int_hop + int_coulomb
+
+    def _setBath_unit(self, eps_array, t_array):
+        """Same as MickeyMouseModel.setBath but takes explicit bath arrays."""
+        hyb = None
+        for eps_b, t_b in zip(eps_array, t_array):
+            occ_b = 1.0 / (np.exp(eps_b / self.T) + 1.0)
+            g_l   = Gf(mesh=self.tt_mesh, target_shape=(1, 1))
+            g_g   = Gf(mesh=self.tt_mesh, target_shape=(1, 1))
+            for time1, time2 in self.tt_mesh:
+                phase = np.exp(-1j * eps_b * (float(time1) - float(time2)))
+                g_g[time1, time2] = -1j * (1.0 - occ_b) * phase
+                g_l[time1, time2] = -1j * (-occ_b) * phase
+            g      = KeldyshGF.from_lesser_greater(g_l, g_g)
+            contrib = t_b * g * t_b
+            hyb    = contrib if hyb is None else hyb + contrib
+        return hyb
+
+    def computeGimp_matrix(self):
+        """Return the 2×2 impurity GF as KeldyshGF(target_shape=(2,2)).
+
+        Fills all four site blocks: (0,0), (N,N), (0,N), (N,0).
+        Use this method for the biased-junction case where [[G_∥,G_⊥],[G_⊥,G_∥]]
+        symmetry is broken.  The existing computeGimp() is unchanged.
+        """
+        N    = 1 + self.n_bath
+        g00  = MickeyMouseModel.computeGimp(self, (0, 0))
+        g11  = MickeyMouseModel.computeGimp(self, (N, N))
+        g01  = MickeyMouseModel.computeGimp(self, (0, N))
+        g10  = MickeyMouseModel.computeGimp(self, (N, 0))
+        result = KeldyshGF(mesh=self.tt_mesh, target_shape=(2, 2))
+        for b1, b2 in product(Branch, repeat=2):
+            result[b1, b2].data[..., 0, 0] = g00[b1, b2].data[..., 0, 0]
+            result[b1, b2].data[..., 1, 1] = g11[b1, b2].data[..., 0, 0]
+            result[b1, b2].data[..., 0, 1] = g01[b1, b2].data[..., 0, 0]
+            result[b1, b2].data[..., 1, 0] = g10[b1, b2].data[..., 0, 0]
+        return result
 
     def computeGimp(self):
         N = 1 + self.n_bath
