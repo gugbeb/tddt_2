@@ -1,18 +1,25 @@
 --model 2
---U0 0.9
---U 1.1
---U1 1.0
---n_t 51
---t_max 8.0
+--U0 0.5
+--U 0.5
+--U1 0.5
+--n_t 60
+--t_max 10.0
 --eps_array   0.0    # flat band center e0 (also used as ref bath energy)
 --t_ref_array 1.0    # ref discrete bath hopping
---t_sys_array 1.2    # hopping to flat band (t_flat)
---T 5.0
---t_perp 0.2
+--t_sys_array 1.0    # hopping to flat band (t_flat)
+--T 1.0
+--t_perp 0.5
 --V  0.1
 --hartree_on
 #--flat_sys_bath
 #--D .2
+# Self-consistent D-TRILEX (full dual-boson loop over the whole time mesh).
+# Uncomment --self_cons_on to enable; defaults below apply either way.
+#--self_cons_on
+#--sc_max_iter 50
+#--sc_tol 1.2e-6
+#--mixing_sigma 1
+#--mixing_pi 1
 --output_dir data/Mickey2
 #--simple_output (will save .dat files) or --output_name dtrimp (will save dtrimp.h5 file)
 --output_name dtrimp

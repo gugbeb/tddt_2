@@ -103,3 +103,7 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Large regenerated data files (exceed GitHub's size limits)
+programs/data/Mickey1/dtrimp.h5
+programs/data/Mickey2/dtrimp.h5

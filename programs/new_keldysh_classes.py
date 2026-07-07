@@ -26,6 +26,51 @@ from tddt.keldysh import KeldyshGF, Branch
 from tddt.keldysh import Singular2PKeldyshGF
 
 
+def _herm_regularize_2pt(G: KeldyshGF, average_diag: bool = True) -> KeldyshGF:
+    """
+    Return a copy of a 2-point KeldyshGF whose time-ordered (FF) and
+    anti-ordered (BB) blocks are rebuilt from lesser/greater, with both
+    equal-time diagonals set to the average (G^< + G^>)/2.
+
+    Why: discrete hermiticity of every conv()-built diagram follows from an
+    exact term-by-term covariance of the Gregory-weighted branch sums,
+    provided every input satisfies the blockwise conjugation relation
+
+        G[b1,b2](t,t') = -conj(G[b̄2,b̄1](t',t))   at every grid point.
+
+    A single stored value at t=t' cannot hold both one-sided limits of the
+    jump: from_lesser_greater puts G^< on the FF diagonal but G^> on the BB
+    diagonal, so the relation is violated there by the full (anti)commutator
+    jump G^> - G^< (= -i for a fermion GF). Each Gregory contraction crossing
+    such a diagonal then picks up an O(dt)·jump error that is not
+    hermitian-symmetric — the source of the large hermiticity violation in
+    the dual self-energy. The average is its own conjugation partner, so with
+    it the relation holds exactly everywhere; it is also the correct
+    trapezoid endpoint treatment of a jump at an interval boundary.
+
+    Lesser/greater data are untouched, so the physical content is unchanged.
+
+    With average_diag=False only the reconstruction is performed, keeping the
+    default from_lesser_greater diagonal convention (G^< on FF, G^> on BB).
+    Use this for diagram *outputs*: it removes the O(dt) quadrature noise of
+    the raw conv() FF/BB blocks while staying consistent with the convention
+    that herm_conj()/herm_viol() use for their reconstruction.
+    """
+    assert G.n_args == 2, "G must be a 2-point Green's function"
+    n_left = len(G.arg_index_shapes[0])
+    result = KeldyshGF.from_lesser_greater(
+        G.lesser().copy(), G.greater().copy(), n_left_target_axes=n_left
+    )
+    if average_diag:
+        idx = np.arange(G[Branch.FORWARD, Branch.BACKWARD].data.shape[0])
+        diag_mean = 0.5 * (
+            result.lesser().data[idx, idx, ...] + result.greater().data[idx, idx, ...]
+        )
+        for b in (Branch.FORWARD, Branch.BACKWARD):
+            result[b, b].data[idx, idx, ...] = diag_mean
+    return result
+
+
 def _sing_times_reg(G_sing: Singular2PKeldyshGF, G_reg: KeldyshGF) -> KeldyshGF:
     """
     Compute (f·δ_C @ G_reg)(t,t') = f(t) · G_reg(t,t') exactly.

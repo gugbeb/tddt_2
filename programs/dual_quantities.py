@@ -30,7 +30,24 @@ from tddt.vie2 import solve_vie2
 from new_keldysh_classes import (
     KeldyshGF_2_components, KeldyshGF_2x2_components,
     _sing_times_reg, _reg_times_sing, _lambda_times_sing, _sing_times_lambda,
+    _herm_regularize_2pt,
 )
+
+
+def _herm_regularize_result(x) -> None:
+    """
+    Rebuild the FF/BB blocks of a diagram result from its lesser/greater
+    components (in place on the container). The raw conv() output fills the
+    time-ordered blocks with O(dt) quadrature noise relative to the exact
+    reconstruction; the lesser/greater content is untouched.
+    Handles both the scalar and the 2x2 (Mickey-Mouse²) containers, since
+    computeFermionSelfEnergy/computeBosonSelfEnergy are shared between models.
+    """
+    if isinstance(x, KeldyshGF_2x2_components):
+        x.par.reg = _herm_regularize_2pt(x.par.reg, average_diag=False)
+        x.perp.reg = _herm_regularize_2pt(x.perp.reg, average_diag=False)
+    else:
+        x.reg = _herm_regularize_2pt(x.reg, average_diag=False)
 
 
 def plot_herm_viol(G, name: str, save_dir: str = ".") -> None:
@@ -451,9 +468,14 @@ class DualQuantities:
             self.t_mesh, self.target_shape, is_reg=True
         )
 
+        # Diagonal-averaged FF/BB blocks: required for the hermitian
+        # covariance of the Gregory contractions (see _herm_regularize_2pt).
+        g_reg = _herm_regularize_2pt(g.reg)
+        w_reg = _herm_regularize_2pt(w.reg)
+
         # Select which components of g and w are non-zero.
-        components_g = [g.reg] if g.is_reg else [g.sing, g.reg]
-        components_w = [w.reg] if w.is_reg else [w.sing, w.reg]
+        components_g = [g_reg] if g.is_reg else [g.sing, g_reg]
+        components_w = [w_reg] if w.is_reg else [w.sing, w_reg]
 
         # Sum all non-zero combinations of singular and regular parts.
         for g1 in components_g:
@@ -504,9 +526,14 @@ class DualQuantities:
             self.t_mesh, self.target_shape, is_reg=True
         )
 
+        # Diagonal-averaged FF/BB blocks: required for the hermitian
+        # covariance of the Gregory contractions (see _herm_regularize_2pt).
+        g_reg = _herm_regularize_2pt(g.reg)
+        w_reg = _herm_regularize_2pt(w.reg)
+
         # Select which components of g and w are non-zero.
-        components_g = [g.reg] if g.is_reg else [g.sing, g.reg]
-        components_w = [w.reg] if w.is_reg else [w.sing, w.reg]
+        components_g = [g_reg] if g.is_reg else [g.sing, g_reg]
+        components_w = [w_reg] if w.is_reg else [w.sing, w_reg]
 
         # Sum all non-zero combinations of singular and regular parts.
         for g1 in components_g:
@@ -554,8 +581,16 @@ class DualQuantities:
             self.t_mesh, self.target_shape, is_reg=True
         )
 
-        components_g = [g.reg] if g.is_reg else [g.sing, g.reg]
-        components_w = [w.reg] if w.is_reg else [w.sing, w.reg]
+        # Diagonal-averaged FF/BB blocks (see _herm_regularize_2pt). The
+        # tadpole additionally needs the boson transpose symmetry
+        # W(1,2) = W(2,1) — exact analytically for same-operator channels —
+        # to be hermitian, so enforce it on the regularized copy.
+        g_reg = _herm_regularize_2pt(g.reg)
+        w_reg = _herm_regularize_2pt(w.reg)
+        w_reg = 0.5 * (w_reg + w_reg.T)
+
+        components_g = [g_reg] if g.is_reg else [g.sing, g_reg]
+        components_w = [w_reg] if w.is_reg else [w.sing, w_reg]
 
         for g1 in components_g:
             for w1 in components_w:
@@ -596,11 +631,10 @@ class DualQuantities:
                 self.compute_f1,
                 self.compute_pi,
             )
+            # Rebuild the redundant FF/BB blocks from lesser/greater (raw
+            # conv() fills them with O(dt) noise; the l/g content is exact).
+            _herm_regularize_result(self.pi[channel])
             herm_viol(self.pi[channel], f"pi[{channel}]"); sym_viol_01_10(self.pi[channel], f"pi[{channel}]")
-            # Symmetrise: Gregory quadrature gives O(dt^6) violations; suppress them.
-            #self.pi[channel].reg = 0.5 * (
-            #    self.pi[channel].reg + herm_conj(self.pi[channel].reg)
-            #)
 
     def computeFermionSelfEnergy(self, Lambda, hartree_on=True, plots_dir="."):
         """
@@ -626,10 +660,10 @@ class DualQuantities:
             self.sigma = Sigma_GW + Sigma_HF
         else:
             self.sigma = Sigma_GW
-        # 3-point×3-point Gregory quadrature in compute_sigma introduces O(dt^p)
-        # hermiticity violation. Implement using Langreth decomposition to preserve
-        # hermiticity by computing sigma_ret and sigma_< separately.
-        #self.sigma.reg = 0.5 * (self.sigma.reg + herm_conj(self.sigma.reg))
+        # Hermiticity of the conv()-built diagrams is guaranteed by the
+        # diagonal-averaged inputs (see _herm_regularize_2pt); here we only
+        # rebuild the redundant FF/BB blocks of the result from lesser/greater.
+        _herm_regularize_result(self.sigma)
         herm_viol(self.sigma, "sigma"); sym_viol_01_10(self.sigma, "sigma")
         import os as _os
         _os.makedirs(plots_dir, exist_ok=True)
@@ -771,7 +805,8 @@ class DualQuantities:
     # ------------------------------------------------------------------
 
     def iterate(self, Lambda, prev_sigma: KeldyshGF_2_components,
-                prev_g: KeldyshGF_2_components, prev_w, hartree_on=True):
+                prev_g: KeldyshGF_2_components, prev_w, prev_pi=None,
+                hartree_on=True, mixing_sigma=1.0, mixing_pi=1.0, plots_dir="."):
         """
         Perform one full D-TRILEX iteration and return convergence errors.
 
@@ -782,6 +817,10 @@ class DualQuantities:
             3. Compute Π̃  from the updated G̃           (Eq. 22/25)
             4. Update W̃   via Dyson equation           (Eqs. 28-29)
 
+        Linear mixing is applied to Σ̃ and Π̃ before they are used in the
+        respective Dyson solves: mixed = old + mixing*(new - old). With
+        mixing=1.0 (default) this reduces to plain undamped iteration.
+
         Convergence is measured as the maximum absolute change in the regular
         part of each propagator compared to the previous iteration.
 
@@ -791,7 +830,11 @@ class DualQuantities:
         prev_sigma : KeldyshGF_2_components    — Σ̃ from the previous iteration.
         prev_g     : KeldyshGF_2_components    — G̃ from the previous iteration.
         prev_w     : dict of KeldyshGF_2_components — W̃ from the previous iteration.
+        prev_pi    : dict of KeldyshGF_2_components, optional — Π̃ from the
+                     previous iteration, used for mixing.
         hartree_on : bool — include the HF tadpole diagram.
+        mixing_sigma, mixing_pi : float — linear mixing coefficients.
+        plots_dir  : str — directory for the herm_viol_sigma diagnostic plot.
 
         Returns
         -------
@@ -799,9 +842,18 @@ class DualQuantities:
             Maximum absolute difference for Σ̃, G̃, W̃_ch, W̃_sp.
             Returns inf for the first iteration (no previous values to compare).
         """
-        self.computeFermionSelfEnergy(Lambda, hartree_on)
+        self.computeFermionSelfEnergy(Lambda, hartree_on, plots_dir=plots_dir)
+        if prev_sigma is not None and mixing_sigma != 1.0:
+            self.sigma = prev_sigma + mixing_sigma * (self.sigma - prev_sigma)
         self.computeFermionPropagator()
+
         self.computeBosonSelfEnergy(Lambda)
+        if prev_pi is not None and mixing_pi != 1.0:
+            for channel in self.channels:
+                if prev_pi.get(channel) is not None:
+                    self.pi[channel] = prev_pi[channel] + mixing_pi * (
+                        self.pi[channel] - prev_pi[channel]
+                    )
         self.computeBosonPropagators()
 
         # Compute convergence errors (inf on the first call when prev_* are None).
@@ -1112,22 +1164,32 @@ class DualQuantities2(DualQuantities):
     # Self-consistency iteration with 2×2 convergence tracking
     # ------------------------------------------------------------------
 
-    def iterate(self, Lambda, prev_sigma, prev_g, prev_w, hartree_on=True):
+    def iterate(self, Lambda, prev_sigma, prev_g, prev_w, prev_pi=None,
+                hartree_on=True, mixing_sigma=1.0, mixing_pi=1.0, plots_dir="."):
         """
         One D-TRILEX iteration for the 2×2 model.
 
         Identical in structure to DualQuantities.iterate (see Eqs. 69-70,
-        59-60, 66-68, 74-76), but the convergence error is measured
-        separately for the parallel and perpendicular components; the
-        maximum of the two is returned.
+        59-60, 66-68, 74-76), including linear mixing of Σ̃ and Π̃, but the
+        convergence error is measured separately for the parallel and
+        perpendicular components; the maximum of the two is returned.
 
         Returns
         -------
         (err_sigma, err_g, err_w_ch, err_w_sp) : floats — convergence errors.
         """
-        self.computeFermionSelfEnergy(Lambda, hartree_on)
+        self.computeFermionSelfEnergy(Lambda, hartree_on, plots_dir=plots_dir)
+        if prev_sigma is not None and mixing_sigma != 1.0:
+            self.sigma = prev_sigma + mixing_sigma * (self.sigma - prev_sigma)
         self.computeFermionPropagator()
+
         self.computeBosonSelfEnergy(Lambda)
+        if prev_pi is not None and mixing_pi != 1.0:
+            for channel in self.channels:
+                if prev_pi.get(channel) is not None:
+                    self.pi[channel] = prev_pi[channel] + mixing_pi * (
+                        self.pi[channel] - prev_pi[channel]
+                    )
         self.computeBosonPropagators()
 
         # Use the parent's scalar max-norm on each ∥/⊥ component separately.
@@ -1220,137 +1282,3 @@ def _fill_old_times_2_components(
         dst.reg.components[idx].data[:n, :n] = src.reg.components[idx].data[:, :]
     for b in range(2):
         dst.sing.components[b].data[:n] = src.sing.components[b].data[:]
-
-
-# ---------------------------------------------------------------------------
-# Time-stepping dual quantities
-# ---------------------------------------------------------------------------
-
-class DualQuantitiesTimestep:
-    """
-    D-TRILEX dual quantities solved step by step in real time.
-
-    All reference quantities (Lambda, g_imp, pi_imp, delta_hyb) are assumed
-    to be precomputed on the full time mesh.  At each timestep n the method
-    `step(n)` slices them to the sub-mesh [t_0 .. t_n], builds a fresh
-    DualQuantities object on that sub-mesh, and runs the full D-TRILEX
-    self-consistency loop to convergence before returning.
-
-    Because the Gregory quadrature requires at least `order + 1` time points,
-    the minimum valid n is `KeldyshGF.integrator.order` (= 5 by default).
-    """
-
-    GREGORY_ORDER = KeldyshGF.integrator.order  # 5
-
-    def __init__(
-        self,
-        t_mesh: MeshReTime,
-        dual_params: dict,
-        delta_hyb_full: KeldyshGF_2_components,
-        g_imp_full: KeldyshGF_2_components,
-        pi_imp_full: dict,
-        Lambda_full: dict,
-    ):
-        """
-        Parameters
-        ----------
-        t_mesh        : full real-time mesh shared by all propagators.
-        dual_params   : interaction parameters (same as DualQuantities).
-        delta_hyb_full: hybridisation difference Δ̃ on the full mesh.
-        g_imp_full    : reference impurity GF on the full mesh.
-        pi_imp_full   : dict {'ch', 'sp'} of KeldyshGF — local polarisation Π.
-        Lambda_full   : dict {'ch', 'sp'} of KeldyshGF — three-point vertex Λ.
-        """
-        self.t_mesh = t_mesh
-        self.dual_params = dual_params
-        self.delta_hyb_full = delta_hyb_full
-        self.g_imp_full = g_imp_full
-        self.pi_imp_full = pi_imp_full
-        self.Lambda_full = Lambda_full
-
-        self.n_t = len(t_mesh)
-        self._t_values = np.array([pt.value for pt in t_mesh])
-
-    def _sub_mesh(self, n: int) -> MeshReTime:
-        return MeshReTime(self._t_values[0], self._t_values[n], n + 1)
-
-    def step(
-        self,
-        n: int,
-        dual_g: KeldyshGF_2_components = None,
-        dual_w: dict = None,
-        max_iter: int = 20,
-        tol: float = 1e-8,
-        hartree_on: bool = False,
-    ) -> DualQuantities:
-        """
-        Solve dual quantities on the sub-mesh [t_0 .. t_n] to convergence.
-
-        Parameters
-        ----------
-        n          : timestep index; must be >= GREGORY_ORDER (= 5).
-        dual_g     : converged G̃ from the previous step (warm start), or None.
-        dual_w     : dict {'ch','sp'} of converged W̃ from the previous step, or None.
-        max_iter   : maximum number of D-TRILEX self-consistency iterations.
-        tol        : convergence threshold on max|ΔP| for all propagators.
-        hartree_on : include the Hartree-Fock tadpole diagram.
-
-        Returns
-        -------
-        DualQuantities converged on the sub-mesh of size n+1.
-        """
-        if n < self.GREGORY_ORDER:
-            raise ValueError(
-                f"n={n} < GREGORY_ORDER={self.GREGORY_ORDER}: "
-                "sub-mesh too small for Gregory quadrature"
-            )
-
-        t_mesh_n = self._sub_mesh(n)
-
-        delta_hyb_n = _slice_2_components(self.delta_hyb_full, n, t_mesh_n)
-        g_imp_n     = _slice_2_components(self.g_imp_full,     n, t_mesh_n)
-        pi_imp_n    = {
-            ch: _slice_keldysh_gf(self.pi_imp_full[ch], n, t_mesh_n)
-            for ch in ("ch", "sp")
-        }
-        Lambda_n    = {
-            ch: _slice_keldysh_gf(self.Lambda_full[ch], n, t_mesh_n)
-            for ch in ("ch", "sp")
-        }
-
-        dual_n = DualQuantities(
-            t_mesh_n, self.dual_params, delta_hyb_n, g_imp_n, pi_imp_n, Lambda_n,
-            init_g=dual_g, init_w=dual_w,
-        )
-
-        prev_sigma = None
-        prev_g     = None
-        prev_w     = {"ch": None, "sp": None}
-
-        for it in range(max_iter):
-            err_sigma, err_g, err_w_ch, err_w_sp = dual_n.iterate(
-                Lambda_n, prev_sigma, prev_g, prev_w, hartree_on
-            )
-            print(
-                f"  [n={n:3d}] iter {it + 1:2d}:"
-                f" err_sigma={err_sigma:.3e}"
-                f" err_g={err_g:.3e}"
-                f" err_w_ch={err_w_ch:.3e}"
-                f" err_w_sp={err_w_sp:.3e}"
-            )
-            prev_sigma   = dual_n.sigma
-            prev_g       = dual_n.g
-            prev_w["ch"] = dual_n.w["ch"]
-            prev_w["sp"] = dual_n.w["sp"]
-
-            if (
-                err_sigma != float("inf")
-                and err_sigma < tol
-                and err_g     < tol
-                and err_w_ch  < tol
-                and err_w_sp  < tol
-            ):
-                print(f"  [n={n:3d}] Converged after {it + 1} iterations.")
-                break
-
-        return dual_n

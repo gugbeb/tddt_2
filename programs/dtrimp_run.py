@@ -247,6 +247,19 @@ _parser.add_argument("--flat_sys_bath", action="store_true", default=False,
 _parser.add_argument("--D",            type=float, default=None,
                      help="Half-bandwidth of the flat bath (required with --flat_sys_bath).")
 
+_parser.add_argument("--self_cons_on", action="store_true", default=False,
+                     help="Run the full dual-boson self-consistency loop "
+                          "(Sigma_tilde<->G_tilde<->Pi_tilde<->W_tilde) over the "
+                          "whole time mesh instead of single-shot D-TRILEX.")
+_parser.add_argument("--sc_max_iter",  type=int,   default=50,
+                     help="Max iterations for the self-consistency loop.")
+_parser.add_argument("--sc_tol",       type=float, default=1e-8,
+                     help="Convergence tolerance for the self-consistency loop.")
+_parser.add_argument("--mixing_sigma", type=float, default=0.5,
+                     help="Linear mixing for Sigma_tilde updates: mixed = old + mixing*(new-old).")
+_parser.add_argument("--mixing_pi",    type=float, default=0.5,
+                     help="Linear mixing for Pi_tilde updates.")
+
 _parser.add_argument("--output_dir",   type=str,   default="programs/data",
                      help="Directory for all output files")
 _parser.add_argument("--output_name",  type=str,   default="dtrimp_results",
@@ -463,9 +476,38 @@ if _rank == 0:
 t_se_start = get_time()
 
 plots_dir = os.path.join(output_dir, "plots")
-dual_quantities.computeFermionSelfEnergy(
-    Mickey_ref.Lambda, hartree_on=_args.hartree_on, plots_dir=plots_dir
-)
+
+if _args.self_cons_on:
+    print("Running self-consistent D-TRILEX loop...")
+    prev_sigma = None
+    prev_g     = dual_quantities.g
+    prev_w     = dict(dual_quantities.w)
+    prev_pi    = dict(dual_quantities.pi)
+    for it in range(_args.sc_max_iter):
+        err_sigma, err_g, err_w_ch, err_w_sp = dual_quantities.iterate(
+            Mickey_ref.Lambda, prev_sigma, prev_g, prev_w, prev_pi=prev_pi,
+            hartree_on=_args.hartree_on,
+            mixing_sigma=_args.mixing_sigma, mixing_pi=_args.mixing_pi,
+            plots_dir=plots_dir,
+        )
+        print(f"  iter {it}: err_sigma={err_sigma:.3e} err_g={err_g:.3e} "
+              f"err_w_ch={err_w_ch:.3e} err_w_sp={err_w_sp:.3e}")
+        if max(err_sigma, err_g, err_w_ch, err_w_sp) < _args.sc_tol:
+            print(f"Converged after {it + 1} iterations.")
+            break
+        prev_sigma, prev_g = dual_quantities.sigma, dual_quantities.g
+        prev_w  = dict(dual_quantities.w)
+        prev_pi = dict(dual_quantities.pi)
+    else:
+        print(f"WARNING: self-consistency did not converge after "
+              f"{_args.sc_max_iter} iterations "
+              f"(last errors: sigma={err_sigma:.3e}, g={err_g:.3e}, "
+              f"w_ch={err_w_ch:.3e}, w_sp={err_w_sp:.3e}) — "
+              f"proceeding with the last iterate.")
+else:
+    dual_quantities.computeFermionSelfEnergy(
+        Mickey_ref.Lambda, hartree_on=_args.hartree_on, plots_dir=plots_dir
+    )
 
 t_se = get_time() - t_se_start
 if _rank == 0:
