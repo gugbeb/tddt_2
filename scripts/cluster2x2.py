@@ -161,7 +161,7 @@ for t, k in eps_tk.mesh:
     for spin in range(2):
         eps_tk[t, k][spin, 0, spin, 0] = \
             2 * t_nn * (np.cos(k[0] - A_t) + np.cos(k[1] - A_t)) \
-            + 4 * t_nnn * np.cos(2 * (k[0] - A_t)) * np.cos(2 * (k[1] - A_t))
+            + 4 * t_nnn * np.cos(k[0] - A_t) * np.cos(k[1] - A_t)
 
 # Interaction U^\varsigma_{l_1,l_2,l_3,l_4}(t, q)
 
