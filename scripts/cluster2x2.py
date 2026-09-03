@@ -44,7 +44,10 @@ from tddt.dtrilex import DualTRILEX, Channel
 from tddt.lattice import local_part, lattice_fourier, SpacialArgs
 from tddt.models import FiniteCluster
 
+from tddt.keldysh import Branch
+
 from scripts.utilities import write_keldysh_gf_file, save_keldysh_gf_2pt_h5
+from scripts.herm_check import check_herm, print_summary
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
@@ -229,11 +232,21 @@ theory.compute_ref_correlators(verbosity=2,
 t_ref_done = get_time() - t_start
 print(f"Reference correlators done  [Time: {t_ref_done:.3f} s]")
 
+print()
+print("--- Hermiticity: reference-system correlators ---")
+check_herm("g_ref", theory.g_ref)
+check_herm("g_imp", theory.g_imp)
+check_herm("chi_imp", theory.chi_imp)
+
 ###################### Construct a hybridization function ######################
 
 # Hybridization of impurity site 0 with bath sites 1, 2, 3
 print("Computing the hybridization function...")
 Delta = model_ref.hybridization(theory.t_mesh, [0], [1, 2, 3], T=T)
+
+print()
+print("--- Hermiticity: hybridization ---")
+check_herm("Delta", Delta)
 
 ########################### Solve D-TRILEX equations ###########################
 
@@ -243,11 +256,30 @@ theory.compute_bare_lines_vertex(eps_tk, Delta, U_tq, U_dc)
 t_bare = get_time() - t_bare_start
 print(f"Bare lines done  [Time: {t_bare:.3f} s]")
 
+print()
+print("--- Hermiticity: bare dual lines and impurity polarization ---")
+check_herm("pi_imp_t", theory.pi_imp_t)
+check_herm("Gd0_reg_tk", theory.Gd0_reg_tk)
+check_herm("Gd0_reg_loc", local_part(theory.Gd0_reg_tk))
+check_herm("W0_reg_tq", theory.W0_reg_tq)
+# Singular2PKeldyshGF (delta_C contact terms) and the 3-point vertex are
+# reported as skipped by check_herm() -- listed here for completeness.
+check_herm("eps_tk", theory.eps_tk)
+check_herm("tilde_U_tq", theory.tilde_U_tq)
+check_herm("Lambda", theory.Lambda)
+
 print("Computing dual diagrams...")
 t_diag_start = get_time()
 theory.compute_diagrams()
 t_diag = get_time() - t_diag_start
 print(f"Diagrams done  [Time: {t_diag:.3f} s]")
+
+print()
+print("--- Hermiticity: dual diagrams ---")
+check_herm("pi_tq", theory.pi_tq)
+check_herm("W_reg_tq", theory.W_reg_tq)
+check_herm("Sigma_tk", theory.Sigma_tk)
+check_herm("Sigma_loc", local_part(theory.Sigma_tk))
 
 print("Computing lattice Green's functions...")
 t_lat_start = get_time()
@@ -267,6 +299,22 @@ gd0_full_tr = lattice_fourier(gd0_full_tk, apply_to=SpacialArgs.BRZONE)
 t_lat = get_time() - t_lat_start
 t_total = get_time() - t_start
 print(f"Lattice GFs done  [Time: {t_lat:.3f} s]")
+
+print()
+print("--- Hermiticity: lattice Green's functions ---")
+# NB: only k-space (and purely local) quantities are checked. In real space
+# the conjugation relation connects r and -r, so g_tr / g_cpt_tr / gd0_full_tr
+# cannot be tested r-by-r with the same formula.
+check_herm("g_tk", g_tk)
+check_herm("g_loc", local_part(g_tk))
+check_herm("g_cpt_tk", g_cpt_tk)
+check_herm("g_cpt_loc", local_part(g_cpt_tk))
+check_herm("gd0_full_tk", gd0_full_tk)
+check_herm("gd0_full_loc", local_part(gd0_full_tk))
+
+print_summary()
+print(f"(TDDT_HERM_REGULARIZE = "
+      f"{os.environ.get('TDDT_HERM_REGULARIZE', '1')})")
 print()
 print("=== TIMING SUMMARY ===")
 print(f"Reference correlators:  {t_ref_done:.3f} s")
@@ -297,6 +345,8 @@ def write_keldysh_gf_file(filename, g, spc_point=None, target_indices=()):
                         g[BW, FW][*mesh_point][*target_indices].imag)
             file.write("{} {} {} {}\n".format(*col_data))
 
+
+os.makedirs('data', exist_ok=True)
 
 write_keldysh_gf_file('data/tddt_ref_sys_t0_00.txt',
                       theory.g_ref, target_indices=(0, 0, 0, 0))

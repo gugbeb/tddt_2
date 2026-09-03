@@ -894,6 +894,43 @@ def herm_conj(g: KeldyshGF) -> KeldyshGF:
                                          n_left_target_axes=nri)
 
 
+def herm_regularize(G: KeldyshGF) -> KeldyshGF:
+    r"""
+    Return a copy of a 2-point KeldyshGF whose time-ordered (FF) and
+    anti-time-ordered (BB) equal-time diagonals are both replaced by the
+    average
+
+        G^{FF}(t, t) = G^{BB}(t, t) = (G^<(t, t) + G^>(t, t)) / 2.
+
+    Everything off the diagonal, and the lesser/greater data themselves, are
+    left untouched -- the physical content is unchanged.
+
+    Why: discrete hermiticity of every conv()-built diagram follows from an
+    exact term-by-term covariance of the Gregory-weighted branch sums,
+    provided every input satisfies the blockwise conjugation relation
+
+        G[b1,b2](t,t') = -conj(G[b̄2,b̄1](t',t))   at every grid point.
+
+    A single stored value at t=t' cannot hold both one-sided limits of the
+    jump: the FF and BB blocks carry opposite ones, so the relation is
+    violated there by the full (anti)commutator jump G^> - G^< (= -i for a
+    fermion GF). Each Gregory contraction crossing such a diagonal then picks
+    up an O(dt)·jump error that is not hermitian-symmetric -- the source of
+    the large hermiticity violation in the dual self-energy. The average is
+    its own conjugation partner, so with it the relation holds exactly
+    everywhere; it is also the correct trapezoid endpoint treatment of a jump
+    at an interval boundary.
+    """
+    assert G.n_args == 2, "G must be a 2-point Green's function"
+    result = deepcopy(G)
+    idx = np.arange(G[Branch.FORWARD, Branch.FORWARD].data.shape[0])
+    diag_mean = 0.5 * (G.lesser().data[idx, idx, ...]
+                       + G.greater().data[idx, idx, ...])
+    for b in (Branch.FORWARD, Branch.BACKWARD):
+        result[b, b].data[idx, idx, ...] = diag_mean
+    return result
+
+
 def conv(a: Union[KeldyshGF, Singular2PKeldyshGF],  # noqa: C901
          b: Union[KeldyshGF, Singular2PKeldyshGF],
          coupled_args: Sequence[Tuple[int, int]] = [],

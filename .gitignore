@@ -1,4 +1,6 @@
 # Byte-compiled / optimized / DLL files
+.gitignore
+tmp/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -107,3 +109,10 @@ venv.bak/
 # Large regenerated data files (exceed GitHub's size limits)
 programs/data/Mickey1/dtrimp.h5
 programs/data/Mickey2/dtrimp.h5
+
+# Local run configuration (param files) -- keep the packaging manifest
+*.in
+!MANIFEST.in
+
+# Generated output directories
+data/

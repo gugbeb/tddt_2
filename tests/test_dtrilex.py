@@ -22,10 +22,10 @@ import unittest
 from itertools import product
 import numpy as np
 
-from triqs.gf import MeshReTime, MeshProduct, MeshBrZone
+from triqs.gf import Gf, MeshReTime, MeshProduct, MeshBrZone
 from triqs.lattice import BravaisLattice, BrillouinZone
 
-from tddt.keldysh import Branch, KeldyshGF
+from tddt.keldysh import Branch, KeldyshGF, herm_regularize
 from tddt.dtrilex import (polarization_2nd_order,
                           selfenergy_2nd_order,
                           selfenergy_2nd_order_hf)
@@ -441,6 +441,76 @@ class TestDiagrams(unittest.TestCase):
                     W0[k] * W0[l] * g[b3, b2].data[l, k, K, w2, w1]
 
         assert_keldysh_gf_almost_equal(sigma, sigma_ref, precision=1e-4)
+
+    def test_herm_regularize(self):
+        """
+        herm_regularize must replace both equal-time diagonals (FF and BB) by
+        0.5*(G^< + G^>) and leave every other element -- including the whole
+        lesser/greater content -- bit-for-bit untouched.
+        """
+        mesh = MeshProduct(self.t_mesh[0], self.t_mesh[0])
+        n = self.n_t[0]
+        idx = np.arange(n)
+
+        # Each of the 4 branch blocks is filled independently, so the FF/BB
+        # equal-time diagonal is (by construction) inconsistent with
+        # lesser/greater -- a stand-in for the O(dt) quadrature noise that
+        # conv() leaves on the raw diagram-result diagonal.
+        G = self._make_test_keldysh_gf(mesh, 1.0)
+        g_l = G.lesser().copy()
+        g_g = G.greater().copy()
+        ff = G[FW, FW].data.copy()
+        bb = G[BW, BW].data.copy()
+
+        G_reg = herm_regularize(G)
+
+        # Lesser/greater are untouched
+        np.testing.assert_allclose(G_reg.lesser().data, g_l.data)
+        np.testing.assert_allclose(G_reg.greater().data, g_g.data)
+
+        # Both equal-time diagonals become the average
+        diag_mean = 0.5 * (g_l.data[idx, idx] + g_g.data[idx, idx])
+        np.testing.assert_allclose(G_reg[FW, FW].data[idx, idx], diag_mean)
+        np.testing.assert_allclose(G_reg[BW, BW].data[idx, idx], diag_mean)
+
+        # Everything off the diagonal is preserved exactly
+        off = ~np.eye(n, dtype=bool)
+        np.testing.assert_array_equal(G_reg[FW, FW].data[off], ff[off])
+        np.testing.assert_array_equal(G_reg[BW, BW].data[off], bb[off])
+
+        # The input is not modified in place
+        np.testing.assert_array_equal(G[FW, FW].data, ff)
+        np.testing.assert_array_equal(G[BW, BW].data, bb)
+
+        # With a physically admissible input -- lesser and greater each
+        # obeying X(t,t') = -conj(X(t',t)) -- the repaired diagonal satisfies
+        # the FF/BB conjugation relation G^FF(t,t) = -[G^BB(t,t)]^* exactly,
+        # which is the whole point of the averaging.
+        rng = np.random.default_rng(0)
+
+        def anti_herm(shape):
+            a = rng.normal(size=shape) + 1j * rng.normal(size=shape)
+            return 0.5 * (a - np.conj(a.T))
+
+        g_l2 = Gf(mesh=mesh, target_shape=())
+        g_g2 = Gf(mesh=mesh, target_shape=())
+        g_l2.data[:] = anti_herm((n, n))
+        g_g2.data[:] = anti_herm((n, n))
+        G2 = KeldyshGF.from_lesser_greater(g_l2, g_g2, n_left_target_axes=0)
+
+        # Before: the two diagonals differ by the full G^> - G^< jump
+        self.assertGreater(
+            np.max(np.abs(G2[FW, FW].data[idx, idx]
+                          + np.conj(G2[BW, BW].data[idx, idx]))),
+            1e-3
+        )
+        # After: the relation holds to machine precision
+        G2_reg = herm_regularize(G2)
+        np.testing.assert_allclose(
+            G2_reg[FW, FW].data[idx, idx],
+            -np.conj(G2_reg[BW, BW].data[idx, idx]),
+            atol=1e-14
+        )
 
 
 if __name__ == '__main__':

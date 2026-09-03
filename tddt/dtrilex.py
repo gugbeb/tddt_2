@@ -20,6 +20,7 @@
 
 """Dual TRILEX theory"""
 
+import os
 from copy import deepcopy
 from enum import Enum
 from itertools import product
@@ -34,6 +35,7 @@ from .keldysh import (Branch,
                       KeldyshGF,
                       Singular2PKeldyshGF,
                       herm_conj,
+                      herm_regularize,
                       conv,
                       target_dot)
 from .models import FiniteCluster
@@ -48,6 +50,17 @@ from .util import mapsum
 
 
 IndicesType = tuple[Union[int, str], Union[int, str]]
+
+# Diagnostics switch: set the environment variable TDDT_HERM_REGULARIZE=0 to
+# turn OFF the equal-time hermiticity regularization applied in
+# compute_diagrams(). Default (unset or 1) is the production behaviour.
+HERM_REGULARIZE_ON = os.environ.get("TDDT_HERM_REGULARIZE", "1").lower() \
+    not in ("0", "off", "false", "no")
+
+
+def _herm_reg(G):
+    """herm_regularize(), no-op when disabled via TDDT_HERM_REGULARIZE=0."""
+    return herm_regularize(G) if HERM_REGULARIZE_ON else G
 
 
 class Channel(Enum):
@@ -355,9 +368,11 @@ class DualTRILEX:
 
         Gd0_reg_tr = lattice_fourier(self.Gd0_reg_tk,
                                      apply_to=SpacialArgs.BRZONE)
+        Gd0_reg_tr = _herm_reg(Gd0_reg_tr)
         Gd0_reg_tmr = lattice_fourier(self.Gd0_reg_tk,
                                       apply_to=SpacialArgs.BRZONE,
                                       flip_arg_sign=True)
+        Gd0_reg_tmr = _herm_reg(Gd0_reg_tmr)
 
         tilde_U_tr = lattice_fourier(self.tilde_U_tq,
                                      apply_to=SpacialArgs.BRZONE)
@@ -365,6 +380,7 @@ class DualTRILEX:
         # Local parts for tadpole (Hartree-Fock) diagram
         eps_loc_t = local_part(self.eps_tk)
         Gd0_reg_loc_t = local_part(self.Gd0_reg_tk)
+        Gd0_reg_loc_t = _herm_reg(Gd0_reg_loc_t)
 
         # \tilde U(t, q=0) and W0_reg(t, q=0) for tadpole diagram
         q0 = find_gamma_point(self.tilde_U_tq.mesh.components[1])
@@ -380,11 +396,13 @@ class DualTRILEX:
         for br in product(Branch, repeat=2):
             for t1, t2 in W0_reg_tq0.mesh:
                 W0_reg_tq0[br][t1, t2] = self.W0_reg_tq[br][t1, t2, q0]
+        W0_reg_tq0 = _herm_reg(W0_reg_tq0)
 
         # Dual polarization
         pi_tr = polarization_2nd_order(
             self.Lambda, [Gd0_reg_tr, eps_tr], [Gd0_reg_tmr, eps_tmr]
         )
+        pi_tr = _herm_reg(pi_tr)
         self.pi_tq = lattice_fourier(pi_tr, apply_to=SpacialArgs.LATTICE)
 
         # Dressed dual interaction
@@ -394,17 +412,20 @@ class DualTRILEX:
         # This way the RHS of the equation is Hermitian.
         self.W_reg_tq = solve_vie2(W_reg_F, W_reg_Q) + self.W0_reg_tq
         W_reg_tr = lattice_fourier(self.W_reg_tq, apply_to=SpacialArgs.BRZONE)
+        W_reg_tr = _herm_reg(W_reg_tr)
 
         # Dual self-energy
         Sigma_tr = selfenergy_2nd_order(
             self.Lambda, [Gd0_reg_tmr, eps_tmr], [W_reg_tr, tilde_U_tr]
         )
+        Sigma_tr = _herm_reg(Sigma_tr)
         self.Sigma_tk = lattice_fourier(Sigma_tr, apply_to=SpacialArgs.LATTICE)
 
         # Dual self-energy - tadpole diagram contribution
         Sigma_hf_t = selfenergy_2nd_order_hf(
             self.Lambda, [Gd0_reg_loc_t, eps_loc_t], [W0_reg_tq0, tilde_U_tq0]
         )
+        Sigma_hf_t = _herm_reg(Sigma_hf_t)
 
         # Complete dual self-energy
         for br in product(Branch, repeat=2):
