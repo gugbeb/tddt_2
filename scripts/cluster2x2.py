@@ -92,6 +92,12 @@ _parser.add_argument("--A",           type=float, default=0.0)
 _parser.add_argument("--Omega",       type=float, default=4.0)
 _parser.add_argument("--U",           type=float, default=6.0)
 _parser.add_argument("--U1",          type=float, default=4.0)
+_parser.add_argument("--mu",          type=float, default=None,
+                     help="Chemical potential at t=0 "
+                          "(default: U/2, particle-hole symmetric point)")
+_parser.add_argument("--mu1",         type=float, default=None,
+                     help="Chemical potential at t>0 "
+                          "(default: U1/2, particle-hole symmetric point)")
 _parser.add_argument("--V",           type=float, default=0.2)
 _parser.add_argument("--T",           type=float, default=0.01)
 _parser.add_argument("--ex",          type=float, default=0.0)
@@ -132,6 +138,10 @@ A           = _args.A
 Omega       = _args.Omega
 U           = _args.U
 U1          = _args.U1
+# Chemical potentials before/after the quench. The local interaction enters the
+# Hamiltonian as U n_up n_dn, whose particle-hole symmetric point is mu = U/2.
+mu          = 0.5 * U  if _args.mu  is None else _args.mu
+mu1         = 0.5 * U1 if _args.mu1 is None else _args.mu1
 V           = _args.V
 T           = _args.T
 ex          = _args.ex
@@ -188,9 +198,8 @@ U_dc[Channel.SPIN.value] = Usp
 
 ########################## Reference system ####################################
 
-# Correlated plaquette site (0)
-mu = 0.5 * U        # Chemical potential at t=0
-mu1 = 0.5 * U1      # Chemical potential at t>0
+# NB: the level of the correlated plaquette site (0) is -mu (-mu1 after the
+# quench); mu and mu1 are resolved from the command line above.
 
 # Time-dependent vector potential (x- and y-component)
 Ax_t = ti(ti_mesh, [A * np.cos(Omega * t) for t in ti_mesh])
